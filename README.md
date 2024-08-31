@@ -1,4 +1,4 @@
-# SVLR: Scalable, Training-Free Visual Language Robotics: A Modular Multi-Model System Compatible with Any Robot on Consumer-Grade GPUs
+# SVLR: Scalable, Training-Free Visual Language Robotics: a modular multi-model framework for consumer-grade GPUs
 
 [![arXiv](https://img.shields.io/badge/arXiv--df2a2a.svg?style=for-the-badge)](comming_soon)
 [![Python](https://img.shields.io/badge/python-3.10-blue?style=for-the-badge)](https://www.python.org)
