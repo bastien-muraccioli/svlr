@@ -1,0 +1,51 @@
+{
+  "robot_name": "UR10",
+  "description": "The UR10 is a collaborative robot (cobot) arm developed by Universal Robots. The UR10 has a payload capacity of 10 kilograms (22 pounds) and a reach of 1300 millimeters (51.2 inches).",
+  "init_pose": 
+    {
+      "pos_end_effector": [0.45823, 0.66262, 0.12843, 0.1247397, -0.9921894, 0, -0.0004761],
+      "gripper": 220
+    },
+  "gripper": 
+    {
+      "open": 30,
+      "close": 220
+    },
+    "eye_to_hand":
+    {
+      "dx": -0.01578,
+      "dy": 0.03327,
+      "dz": 0.0,
+      "depth": 0.735
+    },
+  "actions": 
+  [
+    {
+    "name": "move_to",
+    "program": "UR10_move_to",
+    "description": "Moves the robot arm above a specified object.",
+    "parameters": [{
+      "type": "string",
+      "description": "[object's name]",
+      "required": true
+      }]
+    },{
+    "name": "open_gripper",
+    "program": "UR10_gripper",
+    "description": "Opens the gripper attached to the robot arm."
+    },{
+    "name": "close_gripper",
+    "program": "UR10_gripper",
+    "description": "Closes the gripper attached to the robot arm."
+    },{
+    "name": "pick_and_place",
+    "program": "UR10_pick_place",
+    "description": "Picks up an object and place it next to another one. By using this action, you don't need to use the move_to and open/close_gripper actions separately.",
+    "parameters": [{
+      "type": "array of two strings",
+      "description": "[object to pick name, destination object name]",
+      "required": true
+      }]
+    }
+  ]
+}

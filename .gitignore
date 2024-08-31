@@ -1,0 +1,10 @@
+# Environments
+.env
+__pycache__/
+.idea/
+*.pyc
+.vscode/
+
+# Project
+camera_calibration/images/*
+camera_calibration/output/*
