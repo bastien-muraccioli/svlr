@@ -59,7 +59,7 @@ This mode will allow you to control the UR10 robot with the SVLR framework.
 
 - [ROS Noetic](http://wiki.ros.org/noetic/Installation) with the [UR10 controller](https://github.com/ThomasDuvinage/ur_robotiq_controller), custom controller can be used, as it can receive data from the SVLR framework.
 - UR10 Robot + camera + gripper (Robotiq 2F-140) (However, SVLR is adaptable to any robot with any gripper and camera, but you will need to create a custom controller)
-- Have a calibrated camera : If you have a USB camera you can use the ROS package [https://github.com/bastien-muraccioli/logicool) and follow the instructions to calibrate the camera. At the end, you will need to save the calibration matrix usb_cam.yaml into the svlr root folder and rename it to calibration.yaml.
+- Have a calibrated camera : If you have a USB camera you can use the ROS package [logicool](https://github.com/bastien-muraccioli/logicool) and follow the instructions to calibrate the camera. At the end, you will need to save the calibration matrix usb_cam.yaml into the svlr root folder and rename it to calibration.yaml.
 - In slvr/actions/UR10_action.json, you need to specify: 
   - the init_pose in the end effector coordinates 
   - the eye_to_hand: dx and dy that are the offsets between the camera and the end effector.
