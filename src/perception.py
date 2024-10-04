@@ -210,6 +210,7 @@ class Perception:
         print("Starting VLM")
         vlm = VLM(self.vlm_name, self.image)
         vlm_output = vlm.run()
+        torch.cuda.empty_cache()
         self.environment_description_list = parse_vlm_output(vlm_output)
 
         #Segmentation

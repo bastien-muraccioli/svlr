@@ -5,6 +5,7 @@ from tools.read_json import read_robot_json
 
 import argparse
 import time
+import torch
 
 
 class ControlLoop:
@@ -39,7 +40,9 @@ class ControlLoop:
         self.llm = LLM(model_name=self.llm_name, temperature=self.llm_temperature, provider=self.llm_provider, is_chat=self.llm_is_chat)
         print(f"Generated Prompt:\n{self.llm.prompt_system.format(content=prompt)}")
         action_text = self.llm.run(prompt)
-        self.llm = None # Reset the LLM model to free up GPU memory
+        # Reset the LLM model to free up GPU memory
+        self.llm = None 
+        torch.cuda.empty_cache()
         print(f"LLM Response:\n{action_text}")
         action_dict_list = self.action.run(action_text, self.prompt_generator.environment_description_list, self.prompt_generator.perception.environment_pos)
         print(f"Generated actions:\n{action_dict_list}")

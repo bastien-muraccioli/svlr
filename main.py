@@ -127,7 +127,12 @@ def simulation_controller(args: argparse.Namespace):
             cv2.imshow("Loaded Image", image)
             cv2.waitKey(2000)  # 0 means wait indefinitely
             cv2.destroyAllWindows()
-        action_dict = controller.run(image)
+        print("Write 'stop' if you want to stop the program")
+        user_input = input("User input: ")
+        if user_input == "stop":
+            # Quit the program
+            return
+        action_dict = controller.run(image, user_input)
         if action_dict is None:
             print("No action generated")
             break

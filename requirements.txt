@@ -13,8 +13,10 @@ torchvision
 peft
 einops
 timm
-flash_attn==1.0.9
+packaging
 wheel
+flash_attn #==1.0.9
 sentencepiece
 matplotlib
 opencv-python
+scikit-image
