@@ -1,6 +1,6 @@
 # SVLR: Scalable, Training-Free Visual Language Robotics: a modular multi-model framework for consumer-grade GPUs
 
-[![arXiv](https://img.shields.io/badge/arXiv--df2a2a.svg?style=for-the-badge)](comming_soon)
+[![arXiv](https://img.shields.io/badge/arXiv--df2a2a.svg?style=for-the-badge)](https://arxiv.org/abs/2502.01071)
 [![Python](https://img.shields.io/badge/python-3.10-blue?style=for-the-badge)](https://www.python.org)
 [![License](https://img.shields.io/github/license/TRI-ML/prismatic-vlms?style=for-the-badge)](LICENSE)
 
@@ -217,24 +217,16 @@ In src/perception.py, you will need to replace the seg_model_name variable by th
 
 
 ## Citation
+If you find our work useful, please consider citing us!
 
-**comming soon**
-
-[//]: # (If you find our code useful in your work, please cite [our paper]&#40;comming_soon&#41;:)
-
-[//]: # ()
-[//]: # (```bibtex)
-
-[//]: # (@article{svlr,)
-
-[//]: # (    title={Scalable, Training-Free Visual Language Robotics: a modular multi-model framework for consumer-grade GPUs},)
-
-[//]: # (    author={Marie Samson and Bastien Muraccioli and Fumio Kanehiro},)
-
-[//]: # (    journal = {},)
-
-[//]: # (    year={2024})
-
-[//]: # (} )
-
-[//]: # (```)
+```bibtex
+@misc{samson2025scalabletrainingfreevisuallanguage,
+      title={Scalable, Training-Free Visual Language Robotics: A Modular Multi-Model Framework for Consumer-Grade GPUs}, 
+      author={Marie Samson and Bastien Muraccioli and Fumio Kanehiro},
+      year={2025},
+      eprint={2502.01071},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2502.01071}, 
+}
+```
