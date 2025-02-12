@@ -2,16 +2,17 @@ from tools.read_json import read_robot_json
 
 import importlib
 
+
 def call_robot_function(robot_name: str, function_name: str, *params):
     program = ""
 
     robot = read_robot_json(robot_name=robot_name)
-    
+
     for action in robot["actions"]:
         if action["name"] == function_name:
             program = action["program"]
             break
-    
+
     if not program:
         print(f"{robot_name}'s function: {function_name} wasn't found.")
         return

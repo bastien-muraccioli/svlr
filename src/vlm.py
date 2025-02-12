@@ -4,24 +4,32 @@ import torchvision.transforms as T
 from torchvision.transforms.functional import InterpolationMode
 import time
 
+
 class VLM:
     def __init__(self, vlm_name: str, image):
-        
+
         self.IMAGENET_MEAN = (0.485, 0.456, 0.406)
         self.IMAGENET_STD = (0.229, 0.224, 0.225)
-        
-        print(f"VLM {vlm_name} runs on {torch.device('cuda' if torch.cuda.is_available() else 'cpu')}")
-        self.model = AutoModel.from_pretrained(
-            vlm_name,
-            torch_dtype=torch.float16,
-            low_cpu_mem_usage=True,
-            trust_remote_code=True).eval().cuda()
+
+        print(
+            f"VLM {vlm_name} runs on {torch.device('cuda' if torch.cuda.is_available() else 'cpu')}"
+        )
+        self.model = (
+            AutoModel.from_pretrained(
+                vlm_name,
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+            )
+            .eval()
+            .cuda()
+        )
 
         self.tokenizer = AutoTokenizer.from_pretrained(vlm_name, trust_remote_code=True)
 
         self.image = image
-        self.image_size = 448 # image will be resized to (image_size x image_size) for fast processing
-        
+        self.image_size = 448  # image will be resized to (image_size x image_size) for fast processing
+
         # set the max number of tiles in `max_num`
         self.pixel_values = self.load_image(max_num=6).to(torch.float16).cuda()
 
@@ -32,34 +40,39 @@ class VLM:
             temperature=0.2,
             top_p=0.7,
             repetition_penalty=1.1,
-            )
+        )
 
         self.prompt = "List the objects, with only one object per line"
 
     def run(self):
         # single-round single-image conversation
         start = time.time()
-        response = self.model.chat(self.tokenizer, self.pixel_values, self.prompt, self.generation_config)
+        response = self.model.chat(
+            self.tokenizer, self.pixel_values, self.prompt, self.generation_config
+        )
         end = time.time()
         print(f"VLM Inference time = {end - start}s")
         print(f"VLM Prompt = {self.prompt}")
         print(f"VLM Response = {response}")
         return response
 
-
     def build_transform(self):
         MEAN, STD = self.IMAGENET_MEAN, self.IMAGENET_STD
-        transform = T.Compose([
-            T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-            T.Resize((self.image_size, self.image_size), interpolation=InterpolationMode.BICUBIC),
-            T.ToTensor(),
-            T.Normalize(mean=MEAN, std=STD)
-        ])
+        transform = T.Compose(
+            [
+                T.Lambda(lambda img: img.convert("RGB") if img.mode != "RGB" else img),
+                T.Resize(
+                    (self.image_size, self.image_size),
+                    interpolation=InterpolationMode.BICUBIC,
+                ),
+                T.ToTensor(),
+                T.Normalize(mean=MEAN, std=STD),
+            ]
+        )
         return transform
 
-
     def find_closest_aspect_ratio(self, aspect_ratio, target_ratios, width, height):
-        best_ratio_diff = float('inf')
+        best_ratio_diff = float("inf")
         best_ratio = (1, 1)
         area = width * height
         for ratio in target_ratios:
@@ -73,19 +86,24 @@ class VLM:
                     best_ratio = ratio
         return best_ratio
 
-
     def dynamic_preprocess(self, min_num=1, max_num=6, use_thumbnail=False):
         orig_width, orig_height = self.image.size
         aspect_ratio = orig_width / orig_height
 
         # calculate the existing image aspect ratio
         target_ratios = set(
-            (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
-            i * j <= max_num and i * j >= min_num)
+            (i, j)
+            for n in range(min_num, max_num + 1)
+            for i in range(1, n + 1)
+            for j in range(1, n + 1)
+            if i * j <= max_num and i * j >= min_num
+        )
         target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
 
         # find the closest aspect ratio to the target
-        target_aspect_ratio = self.find_closest_aspect_ratio(aspect_ratio, target_ratios, orig_width, orig_height)
+        target_aspect_ratio = self.find_closest_aspect_ratio(
+            aspect_ratio, target_ratios, orig_width, orig_height
+        )
 
         # calculate the target width and height
         target_width = self.image_size * target_aspect_ratio[0]
@@ -100,7 +118,7 @@ class VLM:
                 (i % (target_width // self.image_size)) * self.image_size,
                 (i // (target_width // self.image_size)) * self.image_size,
                 ((i % (target_width // self.image_size)) + 1) * self.image_size,
-                ((i // (target_width // self.image_size)) + 1) * self.image_size
+                ((i // (target_width // self.image_size)) + 1) * self.image_size,
             )
             # split the image
             split_img = resized_img.crop(box)
@@ -111,11 +129,9 @@ class VLM:
             processed_images.append(thumbnail_img)
         return processed_images
 
-
     def load_image(self, max_num=6):
         transform = self.build_transform()
         images = self.dynamic_preprocess(use_thumbnail=True, max_num=max_num)
         pixel_values = [transform(image) for image in images]
         pixel_values = torch.stack(pixel_values)
         return pixel_values
-

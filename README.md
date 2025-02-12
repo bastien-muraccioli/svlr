@@ -60,8 +60,8 @@ This mode will allow you to control the UR10 robot with the SVLR framework.
 - [ROS Noetic](http://wiki.ros.org/noetic/Installation) with the [UR10 controller](https://github.com/ThomasDuvinage/ur_robotiq_controller), custom controller can be used, as it can receive data from the SVLR framework.
 - UR10 Robot + camera + gripper (Robotiq 2F-140) (However, SVLR is adaptable to any robot with any gripper and camera, but you will need to create a custom controller)
 - Have a calibrated camera : If you have a USB camera you can use the ROS package [logicool](https://github.com/bastien-muraccioli/logicool) and follow the instructions to calibrate the camera. At the end, you will need to save the calibration matrix usb_cam.yaml into the svlr root folder and rename it to calibration.yaml.
-- In slvr/actions/UR10_action.json, you need to specify: 
-  - the init_pose in the end effector coordinates 
+- In slvr/actions/UR10_action.json, you need to specify:
+  - the init_pose in the end effector coordinates
   - the eye_to_hand: dx and dy that are the offsets between the camera and the end effector.
   - the eye_to_hand: depth that is the distance between the camera and your setup during the init pose, if you are using a table, it's the distance between the camera and the table.
 - In slvr/actions/UR10_pick_place.py, you need to specify the zmin where your robot can reach the objects on the table.
@@ -82,6 +82,7 @@ Below is a list of arguments you can use when running `main.py` to control the r
   - `--buffer` (`int`, default: `1024`): Determines the buffer size for the server.
 
 - **Camera Settings:**
+  - `--camera_topic` (`str`, default: `""`): Set camera image topic
   - `--camera_device` (`str`, default: `'/dev/video2'`): Specifies the camera device path.
   - `--camera_width` (`int`, default: `640`): Sets the width of the camera feed.
   - `--camera_height` (`int`, default: `480`): Sets the height of the camera feed.
@@ -114,7 +115,7 @@ High-level overview of repository/project file-tree:
 + `llm_prompt.json` - JSON file with the LLM prompt sytem templates.
 + `main.py` - main file to run the SVLR framework.
 + `requirements.txt` - Python dependencies.
-+ `LICENSE` - All code is made available under the MIT License. 
++ `LICENSE` - All code is made available under the MIT License.
 + `README.md` - You are here!
 
 ---
@@ -168,7 +169,7 @@ We recommend you to explore the UR10 files to understand this process.
 1. In your robot_action.json file, add the new actions with the following format:
 ``` json
 {
-    "actions": 
+    "actions":
   [
     {
     "name": "action_name",
@@ -196,7 +197,7 @@ By default, the SVLR framework uses the following models from HuggingFace:
 As the lightweights open-source VLM are recent, it can be a bit tricky to add a new one. However, as it concerns the SVLR framework, you will only need to update the src/vlm.py file to use the new model.
 
 ### Add a new LLM
-To add a new LLM, you need to specify its system prompt in the llm_prompt.json file, otherwise it will use the default prompt, that is not recommended. 
+To add a new LLM, you need to specify its system prompt in the llm_prompt.json file, otherwise it will use the default prompt, that is not recommended.
 
 Then you will need to specify its name and its provider (HuggingFace or OpenAI) with the --llm_name and --llm_provider arguments when running the main.py file. If you want to use a chat model, you will need to specify the --llm_is_chat argument.
 
@@ -221,12 +222,12 @@ If you find our work useful, please consider citing us!
 
 ```bibtex
 @misc{samson2025scalabletrainingfreevisuallanguage,
-      title={Scalable, Training-Free Visual Language Robotics: A Modular Multi-Model Framework for Consumer-Grade GPUs}, 
+      title={Scalable, Training-Free Visual Language Robotics: A Modular Multi-Model Framework for Consumer-Grade GPUs},
       author={Marie Samson and Bastien Muraccioli and Fumio Kanehiro},
       year={2025},
       eprint={2502.01071},
       archivePrefix={arXiv},
       primaryClass={cs.RO},
-      url={https://arxiv.org/abs/2502.01071}, 
+      url={https://arxiv.org/abs/2502.01071},
 }
 ```

@@ -14,7 +14,7 @@ class ControlLoop:
         # Initialize the robot information
         self.robot_name = args.robot_name
         self.robot_info = read_robot_json(self.robot_name)
-        
+
         # Save LLM parameters
         self.llm_temperature = args.llm_temperature
         self.llm_name = args.llm_name
@@ -37,14 +37,23 @@ class ControlLoop:
 
         # Initialize the LLM model
         print("Starting LLM")
-        self.llm = LLM(model_name=self.llm_name, temperature=self.llm_temperature, provider=self.llm_provider, is_chat=self.llm_is_chat)
+        self.llm = LLM(
+            model_name=self.llm_name,
+            temperature=self.llm_temperature,
+            provider=self.llm_provider,
+            is_chat=self.llm_is_chat,
+        )
         print(f"Generated Prompt:\n{self.llm.prompt_system.format(content=prompt)}")
         action_text = self.llm.run(prompt)
         # Reset the LLM model to free up GPU memory
-        self.llm = None 
+        self.llm = None
         torch.cuda.empty_cache()
         print(f"LLM Response:\n{action_text}")
-        action_dict_list = self.action.run(action_text, self.prompt_generator.environment_description_list, self.prompt_generator.perception.environment_pos)
+        action_dict_list = self.action.run(
+            action_text,
+            self.prompt_generator.environment_description_list,
+            self.prompt_generator.perception.environment_pos,
+        )
         print(f"Generated actions:\n{action_dict_list}")
         end = time.time()
         print(f"Control Loop - Time taken: {end - start}")
