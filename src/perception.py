@@ -5,7 +5,9 @@ from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2 as cv
+import base64
 from PIL import Image
+from io import BytesIO
 import skimage.measure as sim
 import skimage.transform as sit
 import re
@@ -28,7 +30,7 @@ def parse_vlm_output(text):
 
 class Perception:
     def __init__(self):
-        self.vlm_name = "OpenGVLab/Mini-InternVL-Chat-2B-V1-5"
+        self.vlm_name = "llava-phi3:latest" #"OpenGVLab/Mini-InternVL-Chat-2B-V1-5"
         self.seg_model_name = "CIDAS/clipseg-rd64-refined"
         self.pictures_folder_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "pictures"
@@ -240,7 +242,13 @@ class Perception:
         plt.close()
 
     def run(self, image):
-        self.image = Image.fromarray(cv.cvtColor(image, cv.COLOR_BGR2RGB))
+        # image_rgb = Image.fromarray(cv.cvtColor(image, cv.COLOR_BGR2RGB))
+        pil_image = Image.fromarray(image)
+
+        # Convert to base64 string without saving
+        buffered = BytesIO()
+        pil_image.save(buffered, format="JPEG")  # or PNG
+        self.image = base64.b64encode(buffered.getvalue()).decode("utf-8")
         # VLM
         print("Starting VLM")
         vlm = VLM(self.vlm_name, self.image)

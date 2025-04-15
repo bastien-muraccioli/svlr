@@ -15,7 +15,7 @@ einops
 timm
 packaging
 wheel
-flash_attn #==1.0.9
+# flash_attn ==1.0.9
 sentencepiece
 matplotlib
 opencv-python
