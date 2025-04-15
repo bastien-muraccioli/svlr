@@ -22,10 +22,6 @@ Utilizes a Visual Language Model (VLM), zero-shot image segmentation, a Large La
 
 ## Installation
 ```bash
-# Create and activate conda environment
-conda create -n svlr python=3.10 -y
-conda activate svlr
-
 # Install PyTorch. Below is a sample command to do this, but you should check the following link
 # to find installation instructions that are specific to your compute platform:
 # https://pytorch.org/get-started/locally/
@@ -36,6 +32,16 @@ git clone https://github.com/bastien-muraccioli/svlr.git
 cd svlr
 pip install -r requirements.txt
 ```
+
+**Notes:**
+- SVLR is compatible with both `venv` and `conda` virtual environments.
+- The project has been tested on Python **3.10** and now also on **3.12.3**.
+- This repository requires **[Ollama](https://ollama.com/)** to be installed.
+- Make sure to have the `llava-phi3` model downloaded via Ollama:
+  ```bash
+  ollama run llava-phi3
+  ```
+
 
 ## Getting Started
 
@@ -188,13 +194,13 @@ We recommend you to explore the UR10 files to understand this process.
 
 ## How to add new AI models
 By default, the SVLR framework uses the following models from HuggingFace:
-- VLM: OpenGVLab/Mini-InternVL-Chat-2B-V1-5
+- VLM: llava-phi3
 - LLM: microsoft/Phi-3-mini-4k-instruct
 - Sentence Similarity: all-MiniLM-L6-v2
 - Zero-Shot Image Segmentation: CIDAS/clipseg-rd64-refined
 
-### Add a new VLM
-As the lightweights open-source VLM are recent, it can be a bit tricky to add a new one. However, as it concerns the SVLR framework, you will only need to update the src/vlm.py file to use the new model.
+<!-- ### Add a new VLM
+As the lightweights open-source VLM are recent, it can be a bit tricky to add a new one. However, as it concerns the SVLR framework, you will only need to update the src/vlm.py file to use the new model. -->
 
 ### Add a new LLM
 To add a new LLM, you need to specify its system prompt in the llm_prompt.json file, otherwise it will use the default prompt, that is not recommended.

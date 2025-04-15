@@ -243,15 +243,15 @@ class Perception:
 
     def run(self, image):
         # image_rgb = Image.fromarray(cv.cvtColor(image, cv.COLOR_BGR2RGB))
-        pil_image = Image.fromarray(image)
+        self.image = Image.fromarray(image)
 
         # Convert to base64 string without saving
         buffered = BytesIO()
-        pil_image.save(buffered, format="JPEG")  # or PNG
-        self.image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        self.image.save(buffered, format="JPEG")  # or PNG
+        ollama_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
         # VLM
         print("Starting VLM")
-        vlm = VLM(self.vlm_name, self.image)
+        vlm = VLM(self.vlm_name, ollama_image)
         vlm_output = vlm.run()
         torch.cuda.empty_cache()
         self.environment_description_list = parse_vlm_output(vlm_output)

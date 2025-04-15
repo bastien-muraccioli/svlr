@@ -74,6 +74,10 @@ class VLM:
         print(f"VLM {self.name} Inference time = {end - start}s")
         print(f"VLM Prompt = {self.prompt}")
         print(f"VLM Response = {output.strip()}")
+        #  Unload the model to save memory
+        requests.post("http://localhost:11434/api/generate", json={
+            "model": self.name,
+            "keep_alive": 0})
         return output.strip()
 
     # def build_transform(self):
