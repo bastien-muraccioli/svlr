@@ -7,6 +7,7 @@ import numpy as np
 import cv2 as cv
 import base64
 from PIL import Image
+from lang_sam import LangSAM
 from io import BytesIO
 import skimage.measure as sim
 import skimage.transform as sit
@@ -31,7 +32,7 @@ def parse_vlm_output(text):
 class Perception:
     def __init__(self):
         self.vlm_name = "llava-phi3:latest" #"OpenGVLab/Mini-InternVL-Chat-2B-V1-5"
-        self.seg_model_name = "CIDAS/clipseg-rd64-refined"
+        self.seg_model_name = "language-segment-anything" #"CIDAS/clipseg-rd64-refined"
         self.pictures_folder_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "pictures"
         )
@@ -90,6 +91,75 @@ class Perception:
         # return centroid
 
     def segmentation(self):
+        print(f"Run Image Segmentation model {self.seg_model_name}")
+        # Initialize model
+        model = LangSAM()
+
+        # Convert PIL to RGB and keep original NumPy for processing
+        image_pil = self.image.convert("RGB")
+        image_np = np.array(image_pil)
+
+        imgs_seg = []
+        centers  = []
+        not_found = []
+
+        # Loop over each prompt individually
+        for i, prompt in enumerate(self.environment_description_list):
+            # print(f"Prompt: {prompt}")
+            # start = time.time()
+            result = model.predict([image_pil], [prompt])[0]
+            # elapsed = time.time() - start
+            # print(f"  Inference time = {elapsed:.3f}s")
+
+            # Take only the highest‑confidence mask
+            masks  = result["masks"]
+            scores = result["scores"]
+            best_idx = int(np.argmax(scores))
+            best_mask = (masks[best_idx].astype(np.uint8) * 255)
+
+            # Save raw mask
+            out_path = os.path.join(self.pictures_folder_path, f"prediction_{i}.png")
+            threading.Thread(target=save_image, args=(out_path, best_mask)).start()
+
+            # Compute centroid & bbox
+            center, bbox = self.centroid_segmentation(best_mask)
+            if center is None or bbox is None:
+                not_found.append(prompt)
+                continue
+
+            # Store 2D center + dummy Z=0
+            centers.append([center[0], center[1], 0])
+
+            # Draw box+center on mask for visualization
+            vis = best_mask.copy()
+            x0, y0, x1, y1 = map(int, bbox)
+            cv.rectangle(vis, (x0, y0), (x1, y1), (255, 255, 255), 3)
+            cv.circle(vis, (int(center[0]), int(center[1])), 5, (255,255,255), -1)
+            imgs_seg.append(vis)
+
+        # Remove not‑found prompts from your list
+        for nf in not_found:
+            print(f"Object: {nf} not found, removing from descriptions")
+            self.environment_description_list.remove(nf)
+
+        # Rescale centers back to original image dimensions
+        orig_w, orig_h = self.image.size
+        mask_h, mask_w = (imgs_seg[0].shape[:2] if imgs_seg else (1,1))
+        for c in centers:
+            c[0] = c[0] * orig_w / mask_w
+            c[1] = c[1] * orig_h / mask_h
+
+        # Draw final centers on a copy of the original
+        final_img = image_np.copy()
+        for x, y, _ in centers:
+            cv.circle(final_img, (int(x), int(y)), 20, (255, 0, 0), -1)
+
+        # Spawn your plotting thread
+        threading.Thread(target=self.generate_plot, args=(imgs_seg, final_img)).start()
+
+        return centers
+
+    def segmentationClipSeg(self):
         # Load model
         print(f"Run Image Segmentation model {self.seg_model_name}")
         processor = CLIPSegProcessor.from_pretrained(self.seg_model_name)
@@ -242,13 +312,14 @@ class Perception:
         plt.close()
 
     def run(self, image):
-        # image_rgb = Image.fromarray(cv.cvtColor(image, cv.COLOR_BGR2RGB))
+        image_rgb = Image.fromarray(cv.cvtColor(image, cv.COLOR_BGR2RGB))
         self.image = Image.fromarray(image)
 
         # Convert to base64 string without saving
         buffered = BytesIO()
         self.image.save(buffered, format="JPEG")  # or PNG
         ollama_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        self.image = image_rgb
         # VLM
         print("Starting VLM")
         vlm = VLM(self.vlm_name, ollama_image)

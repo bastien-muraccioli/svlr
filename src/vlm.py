@@ -47,7 +47,7 @@ class VLM:
         #     repetition_penalty=1.1,
         # )
 
-        self.prompt = "List the objects, with only one object per line"
+        self.prompt = "List the objects, with only one object per line. The picture is in a top-down view. Don't include the background, the table or the floor."
 
     def run(self):
         # single-round single-image conversation
