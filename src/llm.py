@@ -67,11 +67,11 @@ class LLM:
             from langchain_huggingface import HuggingFacePipeline
 
             # check if NVIDIA GPU is available
-            print(
-                f"LLM {self.model_name} runs on {torch.device('cuda' if torch.cuda.is_available() else 'cpu')}"
-            )
-            # Add HF_HUB_DISABLE_SYMLINKS_WARNING environment variable to avoid warning
-            os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+            # print(
+            #     f"LLM {self.model_name} runs on {torch.device('cuda' if torch.cuda.is_available() else 'cpu')}"
+            # )
+            # # Add HF_HUB_DISABLE_SYMLINKS_WARNING environment variable to avoid warning
+            # os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
             # Set the seed for reproducibility
             torch.random.manual_seed(0)
 
@@ -81,8 +81,11 @@ class LLM:
             )
 
             model = AutoModelForCausalLM.from_pretrained(
-                self.model_name, quantization_config=double_quant_config
+                self.model_name,
+                quantization_config=double_quant_config,
+                # device_map="auto",
             )
+
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             pipe = pipeline(
                 "text-generation",
@@ -93,8 +96,8 @@ class LLM:
                 temperature=self.temperature,
                 return_full_text=False,
             )
-
             self.model = HuggingFacePipeline(pipeline=pipe)
+
             if not "{content}" in self.prompt_system:
                 self.prompt_system += "\n{content}"
             self.prompt_template = PromptTemplate.from_template(self.prompt_system)

@@ -29,8 +29,22 @@ def main():
     parser.add_argument("--port", type=int, default=65500, help="Robot server port")
     parser.add_argument("--buffer", type=int, default=1024, help="Server buffer size")
 
+    # ROS topics
+    parser.add_argument(
+        "--ros_publisher",
+        type=str,
+        default="",
+        help="Name of the ros topic to publish SVLR actions",
+    )
+    parser.add_argument(
+        "--ros_subscriber",
+        type=str,
+        default="",
+        help="Name of the subscriber ros topic to handle of actions",
+    )
+
     # Camera
-    parser.add_argument("--camera_topic", type=str, default="", help="Camera ros topic")
+    parser.add_argument("--camera_topic", type=str, default="/camera/camera/color/image_raw", help="Camera ros topic")
     parser.add_argument(
         "--camera_device", type=str, default="/dev/video2", help="Camera device"
     )
@@ -81,10 +95,113 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.simulation:
-        real_controller(args)
-    else:
+    if args.simulation:
         simulation_controller(args)
+    elif args.ros_publisher and args.ros_subscriber:
+        ros_controller(args)
+    elif (args.ros_publisher and args.ros_subscriber == "") or (
+        args.ros_publisher == "" and args.ros_subscriber
+    ):
+        print(
+            "Both --ros_publisher and --ros_subscriber must be provided to use SVLR with ROS"
+        )
+    else:
+        real_controller(args)
+
+
+def ros_controller(args: argparse.Namespace):
+    import rclpy
+    from tools.ros_pubsub import RosPubSub
+    # Init rclpy
+    rclpy.init()
+
+    # Initial pose of the robot
+    init_pose = [read_robot_json(args.robot_name)["init_pose"]]
+    print(f"Initial pose: {init_pose}")
+
+    # Folder to save captured images
+    image_folder_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "captured_image"
+    )
+    os.makedirs(image_folder_path, exist_ok=True)
+
+    # Init ControlLoop
+    controller = ControlLoop(args)
+
+    # Initialize ROS pub-sub node
+    node = RosPubSub(args.ros_publisher, args.ros_subscriber)
+
+    print(f"Publisher topic: {args.ros_publisher}")
+    print(f"Subscriber topic: {args.ros_subscriber}")
+    print(f"Camera topic: {args.camera_topic}")
+
+    try:
+        while rclpy.ok():
+            image_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+            # Get image
+            if args.camera_topic:
+                print("Getting image from ROS topic")
+                image = node.get_camera_image_ros(topic=args.camera_topic)
+            else:
+                image = get_camera_image(
+                    device=args.camera_device,
+                    width=args.camera_width,
+                    height=args.camera_height,
+                )
+
+            if image is None:
+                print("Failed to get image. Skipping iteration.")
+                continue
+
+            # Show image if needed
+            if args.show_image:
+                print("Displaying captured image")
+                cv2.imshow("Captured Image", image)
+                cv2.waitKey(2000)
+                cv2.destroyAllWindows()
+
+            # Save image
+            if args.save_image:
+                cv2.imwrite(
+                    os.path.join(image_folder_path, f"captured_image_{image_name}.png"),
+                    image,
+                )
+
+            # User prompt
+            print("Write 'stop' if you want to stop the program")
+            user_input = input("User input: ")
+            if user_input.strip().lower() == "stop":
+                break
+
+            # Get updated image
+            if args.camera_topic:
+                image = node.get_camera_image_ros(topic=args.camera_topic)
+            else:
+                image = get_camera_image(
+                    device=args.camera_device,
+                    width=args.camera_width,
+                    height=args.camera_height,
+                )
+
+            if image is None:
+                print("Failed to get image. Skipping.")
+                continue
+
+            # Generate action
+            action_dict_list = controller.run(image, user_input)
+            if action_dict_list is None:
+                print("No action generated")
+                continue
+
+            # Send actions
+            node.send_actions(action_dict_list)
+
+    except KeyboardInterrupt:
+        print("Keyboard interrupt detected. Shutting down.")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 def real_controller(args: argparse.Namespace):
