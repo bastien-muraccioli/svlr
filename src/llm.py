@@ -56,6 +56,22 @@ class LLM:
                     self.prompt_system += "\n{content}"
                 self.prompt_template = PromptTemplate.from_template(self.prompt_system)
 
+        elif self.provider == "Ollama":
+            from langchain_ollama.llms import OllamaLLM
+
+            self.model = OllamaLLM(
+                model=self.model_name,
+                temperature=self.temperature,
+            )
+            if self.is_chat:
+                self.prompt_template = ChatPromptTemplate.from_messages(
+                    [("system", self.prompt_system), ("user", "{content}")]
+                )
+            else:
+                if not "{content}" in self.prompt_system:
+                    self.prompt_system += "\n{content}"
+                self.prompt_template = PromptTemplate.from_template(self.prompt_system)
+
         elif self.provider == "HuggingFace":
             import torch
             from transformers import (

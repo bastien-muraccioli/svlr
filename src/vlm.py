@@ -31,7 +31,7 @@ class VLM:
         # self.tokenizer = AutoTokenizer.from_pretrained(vlm_name, trust_remote_code=True)
 
         self.name = vlm_name
-
+        self.raw_output = ""
         self.image = image
         # self.image_size = 448  # image will be resized to (image_size x image_size) for fast processing
 
@@ -47,7 +47,25 @@ class VLM:
         #     repetition_penalty=1.1,
         # )
 
-        self.prompt = "List the objects, with only one object per line. The picture is in a top-down view. Don't include the background, the table or the floor."
+        self.prompt = \
+"""You see a top-down view of an image.
+Identify every distinct physical object or entity visible in the image.
+List each object individually. If multiple similar or identical objects appear (e.g., two cups, two photos, or two apples), list each one as a separate entry.
+Do not group or merge objects under a single description. For example, output ["photo of a man", "photo of a cat"] instead of ["photos of a man and a cat"].
+Each item should represent a single, identifiable thing (e.g., “red ceramic mug”, “white table”, “metal spoon”).
+Be concise but descriptive.
+Do not include any explanatory text or formatting other than JSON.
+Respond only as a valid JSON array of strings, one string per entity. 
+Example:
+["white ceramic cup", "silver spoon", "brown wooden table"]
+"""
+        
+        # "List all distinct, interactive objects visible in the image. Respond only as a JSON array of strings, with one string per object."
+        # \
+# """You see a top-down view. List all distinct, interactive objects visible in the image.
+# Only one object per line.
+# Ignore background elements like the table, floor, or any non-interactive surfaces."""
+
 
     def run(self):
         # single-round single-image conversation
@@ -80,82 +98,36 @@ class VLM:
             "keep_alive": 0})
         return output.strip()
 
-    # def build_transform(self):
-    #     MEAN, STD = self.IMAGENET_MEAN, self.IMAGENET_STD
-    #     transform = T.Compose(
-    #         [
-    #             T.Lambda(lambda img: img.convert("RGB") if img.mode != "RGB" else img),
-    #             T.Resize(
-    #                 (self.image_size, self.image_size),
-    #                 interpolation=InterpolationMode.BICUBIC,
-    #             ),
-    #             T.ToTensor(),
-    #             T.Normalize(mean=MEAN, std=STD),
-    #         ]
-    #     )
-    #     return transform
+    def parse_vlm_output(self):
+        """
+        Parse the JSON-style output from a VLM into a clean list of strings.
 
-    # def find_closest_aspect_ratio(self, aspect_ratio, target_ratios, width, height):
-    #     best_ratio_diff = float("inf")
-    #     best_ratio = (1, 1)
-    #     area = width * height
-    #     for ratio in target_ratios:
-    #         target_aspect_ratio = ratio[0] / ratio[1]
-    #         ratio_diff = abs(aspect_ratio - target_aspect_ratio)
-    #         if ratio_diff < best_ratio_diff:
-    #             best_ratio_diff = ratio_diff
-    #             best_ratio = ratio
-    #         elif ratio_diff == best_ratio_diff:
-    #             if area > 0.5 * self.image_size * self.image_size * ratio[0] * ratio[1]:
-    #                 best_ratio = ratio
-    #     return best_ratio
+        Args:
+            text (str): The VLM response, expected to be a JSON array of strings.
 
-    # def dynamic_preprocess(self, min_num=1, max_num=6, use_thumbnail=False):
-    #     orig_width, orig_height = self.image.size
-    #     aspect_ratio = orig_width / orig_height
-
-    #     # calculate the existing image aspect ratio
-    #     target_ratios = set(
-    #         (i, j)
-    #         for n in range(min_num, max_num + 1)
-    #         for i in range(1, n + 1)
-    #         for j in range(1, n + 1)
-    #         if i * j <= max_num and i * j >= min_num
-    #     )
-    #     target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
-
-    #     # find the closest aspect ratio to the target
-    #     target_aspect_ratio = self.find_closest_aspect_ratio(
-    #         aspect_ratio, target_ratios, orig_width, orig_height
-    #     )
-
-    #     # calculate the target width and height
-    #     target_width = self.image_size * target_aspect_ratio[0]
-    #     target_height = self.image_size * target_aspect_ratio[1]
-    #     blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
-
-    #     # resize the image
-    #     resized_img = self.image.resize((target_width, target_height))
-    #     processed_images = []
-    #     for i in range(blocks):
-    #         box = (
-    #             (i % (target_width // self.image_size)) * self.image_size,
-    #             (i // (target_width // self.image_size)) * self.image_size,
-    #             ((i % (target_width // self.image_size)) + 1) * self.image_size,
-    #             ((i // (target_width // self.image_size)) + 1) * self.image_size,
-    #         )
-    #         # split the image
-    #         split_img = resized_img.crop(box)
-    #         processed_images.append(split_img)
-    #     assert len(processed_images) == blocks
-    #     if use_thumbnail and len(processed_images) != 1:
-    #         thumbnail_img = self.image.resize((self.image_size, self.image_size))
-    #         processed_images.append(thumbnail_img)
-    #     return processed_images
-
-    # def load_image(self, max_num=6):
-    #     transform = self.build_transform()
-    #     images = self.dynamic_preprocess(use_thumbnail=True, max_num=max_num)
-    #     pixel_values = [transform(image) for image in images]
-    #     pixel_values = torch.stack(pixel_values)
-    #     return pixel_values
+        Returns:
+            list[str]: A list of trimmed object descriptions.
+        """
+        try:
+            # Attempt to parse as JSON
+            text_list = json.loads(self.raw_output)
+            
+            # Ensure it's a list of strings
+            if isinstance(text_list, list):
+                text_list = [str(t).strip() for t in text_list if isinstance(t, (str, int, float))]
+                return text_list
+            else:
+                raise ValueError("Parsed JSON is not a list.")
+        
+        except json.JSONDecodeError:
+            # Fallback: Try to recover if brackets or quotes are missing
+            import re
+            items = re.findall(r'"(.*?)"|\'(.*?)\'', self.raw_output)
+            text_list = [a or b for a, b in items]
+            return [t.strip() for t in text_list if t.strip()]
+        
+    def run_and_parse(self):
+        self.raw_output = self.run()
+        parsed_output = self.parse_vlm_output()
+        print(f"VLM Parsed Output = {parsed_output}")
+        return parsed_output

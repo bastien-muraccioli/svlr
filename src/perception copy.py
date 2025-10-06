@@ -33,83 +33,10 @@ class Perception:
         self.environment_pos = (
             {}
         )  # {'figurine':[x1,y1,z1], 'cup':[x2,y2,z2], 'table':[x3,y3,z3]}
-        self.mask_opacity = 0.1
+        self.mask_opacity = 0.2
 
         self.image = None
         self.frame_with_masks_and_centers = None
-
-        # Tracker dictionary
-        self.trackers = {}  # key: label, value: cv2.TrackerMIL instance
-        self.bboxes = {}    # key: label, value: latest bbox
-
-    def initialize_trackers(self, frame):
-        """
-        Initialize MIL trackers for all detected objects after segmentation.
-        """
-        self.trackers = {}
-
-        frame_np = np.array(frame.convert("RGB"))
-        # We need the original masks to compute accurate bounding boxes
-        for label, center, bbox in zip(self.environment_description_list, self.centers_location, self.bboxes.values()):
-            # bbox is [x0, y0, x1, y1] from segmentation
-            x0, y0, x1, y1 = map(int, bbox)
-            w = x1 - x0
-            h = y1 - y0
-            tracker_bbox = (x0, y0, w, h)
-
-            tracker = cv.TrackerCSRT_create()
-            tracker.init(frame_np, tracker_bbox)
-            self.trackers[label] = tracker
-            self.bboxes[label] = tracker_bbox
-
-    def update_trackers(self, frame):
-        """
-        Update MIL trackers for the current frame.
-        Updates centers_location and frame_with_masks_and_centers.
-        """
-        frame_PIL = Image.fromarray(cv.cvtColor(frame, cv.COLOR_BGR2RGB))
-        frame_np = np.array(frame_PIL.convert("RGB"))
-        new_centers = []
-        new_bboxes = []
-        labels_to_remove = []
-
-        for label, tracker in self.trackers.items():
-            success, bbox = tracker.update(frame_np)
-            if not success:
-                print(f"Tracking failed for {label}, removing.")
-                labels_to_remove.append(label)
-                continue
-
-            x, y, w, h = bbox
-            cx = x + w / 2
-            cy = y + h / 2
-            new_centers.append([cx, cy, 0])
-            new_bboxes.append([x, y, x + w, y + h])
-            self.bboxes[label] = [x, y, x + w, y + h]
-
-        # Remove lost trackers
-        for label in labels_to_remove:
-            del self.trackers[label]
-            del self.bboxes[label]
-            self.environment_description_list.remove(label)
-
-        # Update centers and environment_pos
-        self.centers_location = new_centers
-        self.environment_pos = {
-            label: list(center) for label, center in zip(self.environment_description_list, new_centers)
-        }
-
-        # Build frame visualization with updated bounding boxes
-        masks = []
-        for bbox in new_bboxes:
-            mask = np.zeros(frame_np.shape[:2], dtype=np.uint8)
-            x0, y0, x1, y1 = map(int, bbox)
-            mask[y0:y1, x0:x1] = 255
-            masks.append(mask)
-
-        self.build_frame_with_masks_and_centers(frame_np, masks, new_centers, self.environment_description_list)
-        return self.environment_description_list, cv.cvtColor(self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR)
-
 
     def build_frame_with_masks_and_centers(self, original_frame, masks, centers, labels):
         """
@@ -143,10 +70,6 @@ class Perception:
 
         # Blend the overlay and the original frame
         blended = cv.addWeighted(frame, 1 - self.mask_opacity, overlay, self.mask_opacity, 0)
-
-        for bbox, label in zip(self.bboxes.values(), self.environment_description_list):
-            x0, y0, x1, y1 = map(int, bbox)
-            cv.rectangle(blended, (x0, y0), (x1, y1), (0, 255, 255), 2)  # yellow box
 
         # Draw centroids and labels
         for (x, y, _), label in zip(centers, labels):
@@ -218,7 +141,6 @@ class Perception:
 
         imgs_seg = []
         centers  = []
-        bboxes   = []  # store bounding boxes from segmentation
         not_found = []
 
         # Loop over each prompt individually
@@ -244,7 +166,6 @@ class Perception:
 
             # Store 2D center + dummy Z=0
             centers.append([center[0], center[1], 0])
-            bboxes.append(bbox)  # save bbox for tracker initialization
 
             # Draw box+center on mask for visualization
             vis = best_mask.copy()
@@ -258,26 +179,12 @@ class Perception:
             print(f"Object: {nf} not found, removing from descriptions")
             self.environment_description_list.remove(nf)
 
-        if not centers:
-            return []
-
-        # Rescale centers and bboxes back to original image dimensions
+        # Rescale centers back to original image dimensions
         orig_w, orig_h = self.image.size
         mask_h, mask_w = (imgs_seg[0].shape[:2] if imgs_seg else (1,1))
-        for i, c in enumerate(centers):
+        for c in centers:
             c[0] = c[0] * orig_w / mask_w
             c[1] = c[1] * orig_h / mask_h
-            # Scale bounding boxes
-            x0, y0, x1, y1 = bboxes[i]
-            bboxes[i] = [
-                x0 * orig_w / mask_w,
-                y0 * orig_h / mask_h,
-                x1 * orig_w / mask_w,
-                y1 * orig_h / mask_h,
-            ]
-
-        # Save bounding boxes for tracker initialization
-        self.bboxes = {label: bbox for label, bbox in zip(self.environment_description_list, bboxes)}
 
         # Draw final centers on a copy of the original
         final_img = image_np.copy()
@@ -286,11 +193,7 @@ class Perception:
 
         # Build composite frame with masks and centers
         self.build_frame_with_masks_and_centers(image_np, imgs_seg, centers, self.environment_description_list)
-
-        # Save centers
-        self.centers_location = centers
         return centers
-
 
     def run(self, image):
         # Convert BGR (OpenCV) to RGB
@@ -315,6 +218,4 @@ class Perception:
                 self.environment_description_list, self.centers_location
             )
         }
-        # Initialize trackers
-        self.initialize_trackers(self.image)
-        return self.environment_description_list, vlm.raw_output, cv.cvtColor(self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR)
+        return self.environment_description_list, vlm.raw_output, self.frame_with_masks_and_centers

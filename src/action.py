@@ -49,6 +49,7 @@ class ActionManager:
         self.robot_info = robot_info
         self.robot_actions = self.robot_info["actions"]
         self.robot_actions_name = [action["name"] for action in self.robot_actions]
+        self.action_and_parameters_in_semantic = []
         # Initialize the similarity model
         model_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
@@ -67,15 +68,16 @@ class ActionManager:
         environment_description_list: list,
         environment_pos: dict,
     ):
+        self.action_and_parameters_in_semantic = []
         action_dict_list = []
         action_list = []
         llm_output_action_list = parse_action_text(action_text=action_text)
         print(f"Actions found in the LLM Response:\n{llm_output_action_list}")
 
         # Use sentence similarity to ensure that LLM output matches actions defined in robot_action.json and parameters defined by the VLM (environment_description_list)
-
         for llm_action in llm_output_action_list:
             parameters = []
+            semantic_parameters = []
             action_name = self.most_similar(
                 target=llm_action["action"],
                 compare_list=self.robot_actions_name,
@@ -87,6 +89,7 @@ class ActionManager:
                     parameter_text = self.most_similar(
                         target=llm_parameter, compare_list=environment_description_list
                     )
+                    semantic_parameters.append(parameter_text)
                     # based on the name, find the pixel coordinates
                     parameter_pixel = environment_pos[parameter_text]
                     # convert it to robot coordinates and add it to the list of the final parameters
@@ -97,6 +100,10 @@ class ActionManager:
                 parameters = "None"
             print(f"Formatted Action: {action_name}, Parameters: {parameters}")
             action_list.append({"action": action_name, "param": parameters})
+            
+            self.action_and_parameters_in_semantic.append(
+                {action_name: semantic_parameters}
+            )
 
         for executable_action in action_list:
             if executable_action["param"] == "None":

@@ -8,7 +8,7 @@ def pick_and_place(pick_pos: list, place_pos: list):
     gripper_close = robot_info["gripper"]["close"]
     quaternion = init_pose[3:]
     z_max = init_pose[2]
-    z_min = -0.2673
+    z_min = 0.07
 
     pick_pos_high = pick_pos[:]
     pick_pos_high[2] = z_max

@@ -1,4 +1,5 @@
 from src.llm import LLM
+from src.perception import Perception
 from src.prompt_generator import PromptGenerator
 from src.action import ActionManager
 from tools.read_json import read_robot_json
@@ -22,8 +23,14 @@ class ControlLoop:
         self.llm_is_chat = args.llm_is_chat
         self.llm = None
 
+        self.vlm_name = args.vlm_name
+        self.vlm_provider = args.vlm_provider
+
+        # Initialize perception
+        self.perception = Perception(vlm_name=self.vlm_name, vlm_provider=self.vlm_provider)
+
         # Initialize the prompt generator
-        self.prompt_generator = PromptGenerator(robot_info=self.robot_info)
+        self.prompt_generator = PromptGenerator(robot_info=self.robot_info, perception=self.perception)
 
         # Initialize action
         self.action = ActionManager(robot_info=self.robot_info)
@@ -32,8 +39,9 @@ class ControlLoop:
     def run(self, image, user_input):
         # Ask the LLM to generate a series of actions based on the user input
         start = time.time()
+        environment_description_list, vlm_raw_output, frame_with_masks_and_centers = self.perception.run(image)
         print("Generating actions...")
-        prompt = self.prompt_generator.run(user_input, image)
+        prompt = self.prompt_generator.run(user_input, environment_description_list)
 
         # Initialize the LLM model
         print("Starting LLM")
@@ -44,13 +52,13 @@ class ControlLoop:
             is_chat=self.llm_is_chat,
         )
         print(f"Generated Prompt:\n{self.llm.prompt_system.format(content=prompt)}")
-        action_text = self.llm.run(prompt)
+        llm_output = self.llm.run(prompt)
         # Reset the LLM model to free up GPU memory
         self.llm = None
         torch.cuda.empty_cache()
-        print(f"LLM Response:\n{action_text}")
+        print(f"LLM Response:\n{llm_output}")
         action_dict_list = self.action.run(
-            action_text,
+            llm_output,
             self.prompt_generator.environment_description_list,
             self.prompt_generator.perception.environment_pos,
         )
@@ -58,3 +66,31 @@ class ControlLoop:
         end = time.time()
         print(f"Control Loop - Time taken: {end - start}")
         return action_dict_list
+    
+    def perception_run(self, image):
+        environment_description_list, vlm_raw_output, frame_with_masks_and_centers = self.perception.run(image)
+        return environment_description_list, vlm_raw_output, frame_with_masks_and_centers
+    
+    def language_run(self, user_input, environment_description_list):
+        prompt = self.prompt_generator.run(user_input, environment_description_list)
+        # Initialize the LLM model
+        print("Starting LLM")
+        self.llm = LLM(
+            model_name=self.llm_name,
+            temperature=self.llm_temperature,
+            provider=self.llm_provider,
+            is_chat=self.llm_is_chat,
+        )
+        print(f"Generated Prompt:\n{self.llm.prompt_system.format(content=prompt)}")
+        llm_output = self.llm.run(prompt)
+        # Reset the LLM model to free up GPU memory
+        self.llm = None
+        torch.cuda.empty_cache()
+        print(f"LLM Response:\n{llm_output}")
+        action_dict_list = self.action.run(
+            llm_output,
+            environment_description_list,
+            self.prompt_generator.perception.environment_pos,
+        )
+        print(f"Generated actions:\n{action_dict_list}")
+        return action_dict_list, llm_output

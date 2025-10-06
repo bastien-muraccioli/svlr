@@ -25,6 +25,11 @@ def pixel_to_camera_coordinates(robot_name: str, pixel_pose: list) -> list:
         data = yaml.safe_load(f)
 
     camera_matrix = np.array(data["camera_matrix"]["data"], dtype=float).reshape(3, 3)
+    dist_coeffs = np.array(
+        data["distortion_coefficients"]["data"], dtype=float
+    ).reshape(5)
+
+    k1, k2, p1, p2, k3 = dist_coeffs
 
     # Example pixel coordinates of the object in the image
     u = pixel_pose[0]  # example x pixel coordinates
@@ -34,14 +39,33 @@ def pixel_to_camera_coordinates(robot_name: str, pixel_pose: list) -> list:
     x_norm = (u - camera_matrix[0][2]) / camera_matrix[0][0]
     y_norm = (v - camera_matrix[1][2]) / camera_matrix[1][1]
 
-    # Direction vector in camera coordinates
-    direction_vector = np.array([x_norm, y_norm, 1], dtype=float)
+    r2 = x_norm**2 + y_norm**2
+    r4 = r2**2
+    r6 = r2 * r4
 
-    # Convert direction vector to 3D position in camera coordinates
-    position_camera = direction_vector * depth
-    pose[: len(position_camera)] = position_camera
+    # Radial distortion
+    distortion = 1 + k1 * r2 + k2 * r4 + k3 * r6
 
-    return pose
+    # Tangential distortion
+    delta_x = 2 * p1 * x_norm * y_norm + p2 * (r2 + 2 * x_norm**2)
+    delta_y = p1 * (r2 + 2 * y_norm**2) + 2 * p2 * x_norm * y_norm
+
+    # Apply distortion
+    x_undistorted = (x_norm - delta_x) / distortion
+    y_undistorted = (y_norm - delta_y) / distortion
+
+    # Convert back to pixel coordinates
+    u_undistorted = camera_matrix[0][0] * x_undistorted + camera_matrix[0][2]
+    v_undistorted = camera_matrix[1][1] * y_undistorted + camera_matrix[1][2]
+
+    x = (u_undistorted - camera_matrix[0][2]) / camera_matrix[0][0]
+    y = (v_undistorted - camera_matrix[1][2]) / camera_matrix[1][1]
+
+    X = x * depth
+    Y = y * depth
+    Z = depth
+
+    return np.array([X, Y, Z])
 
 
 def camera_to_robot(robot_name: str, camera_pose: list) -> list:
