@@ -1,4 +1,7 @@
 from src.perception import Perception
+from src.entity import Entity
+from typing import List
+
 
 
 class PromptGenerator:
@@ -10,10 +13,10 @@ class PromptGenerator:
         # Initialize perception
         self.perception = perception
 
-    def run(self, user_input: str, environment_description_list: list):
+    def run(self, user_input: str, environment_description_list: List[Entity]):
         self.user_command = f"User Command:\n{user_input}"
         # Run perception
-        environment_description = ", ".join(environment_description_list)
+        environment_description = ", ".join([entity.name for entity in environment_description_list])
         self.environment_prompt = f"Environment Description:\n{environment_description}"
         prompt = "\n\n".join(
             [self.environment_prompt, self.robot_prompt, self.user_command, "Solution:"]

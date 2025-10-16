@@ -1,55 +1,23 @@
-from tools.robot_tool import pixel_to_robot
-from actions.call_actions import call_robot_function
+import time
+from actions.call_actions import call_robot_class
+from src.entity import Entity
+from src.perception import Perception
 
 from sentence_transformers import SentenceTransformer, util
+import json
 import re
 import os
 
-
-def parse_action_text(action_text: str):
-    action_text_lines = action_text.split("\n")
-    first_action_found = False
-    # Define a list of action dicts of the format: {'action': 'action_name', param: ['param1', 'param2'...]}
-    action_list = []
-    # Define a regex pattern to match the action_name and optional parameters
-    pattern = r"^(?P<action_name>[^\:]+)(?:\:\s*\[(?P<parameters>[^\]]*)\])?$"
-
-    # Search in action_text all the actions and the parameters
-    for lines in action_text_lines:
-        # Use re.match to find the pattern in the action_text
-        match = re.match(pattern, lines)
-        if match:
-            if not first_action_found:
-                first_action_found = True
-
-            # Extract action_name and parameters from match groups
-            action_name = match.group("action_name")
-            parameters_str = match.group("parameters")
-
-            if parameters_str:
-                # Split parameters by comma and strip whitespace
-                parameters = [
-                    param.strip()
-                    for param in parameters_str.split(",")
-                    if param.strip()
-                ]
-            else:
-                parameters = "None"
-            action_list.append({"action": action_name, "param": parameters})
-
-        # After have found one action, if no more action is found stop
-        if not match and first_action_found:
-            break
-
-    return action_list
-
+from typing import List
 
 class ActionManager:
-    def __init__(self, robot_info: dict):
+    def __init__(self, robot_info: dict, perception: Perception):
         self.robot_info = robot_info
         self.robot_actions = self.robot_info["actions"]
         self.robot_actions_name = [action["name"] for action in self.robot_actions]
-        self.action_and_parameters_in_semantic = []
+        self.robot_action_class = call_robot_class(self.robot_info["robot_name"])
+        self.perception = perception
+
         # Initialize the similarity model
         model_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
@@ -65,56 +33,102 @@ class ActionManager:
     def run(
         self,
         action_text: str,
-        environment_description_list: list,
-        environment_pos: dict,
+        environment_description_list: List[Entity],
     ):
-        self.action_and_parameters_in_semantic = []
-        action_dict_list = []
         action_list = []
         llm_output_action_list = parse_action_text(action_text=action_text)
         print(f"Actions found in the LLM Response:\n{llm_output_action_list}")
 
         # Use sentence similarity to ensure that LLM output matches actions defined in robot_action.json and parameters defined by the VLM (environment_description_list)
         for llm_action in llm_output_action_list:
-            parameters = []
-            semantic_parameters = []
+            parameters = [] # List of Entity objects corresponding to the parameters
             action_name = self.most_similar(
                 target=llm_action["action"],
                 compare_list=self.robot_actions_name,
                 embedded_compare_list=self.robot_actions_embedding,
             )
+
             if llm_action["param"] != "None":
                 for llm_parameter in llm_action["param"]:
-                    # parameter_text = name of an object
+                    # parameter_text = name of an entity in the environment_description_list that is the most similar to the llm_parameter
                     parameter_text = self.most_similar(
-                        target=llm_parameter, compare_list=environment_description_list
+                        target=llm_parameter, compare_list=[entity.name for entity in environment_description_list]
                     )
-                    semantic_parameters.append(parameter_text)
-                    # based on the name, find the pixel coordinates
-                    parameter_pixel = environment_pos[parameter_text]
-                    # convert it to robot coordinates and add it to the list of the final parameters
-                    parameters.append(
-                        pixel_to_robot(self.robot_info["robot_name"], parameter_pixel)
-                    )
+                    # Save the entity corresponding to the parameter text
+                    p = next((ent for ent in environment_description_list if ent.name == parameter_text), None)
+                    if p is not None:
+                        parameters.append(p)
+                    else:
+                        parameters.append(None)
             else:
-                parameters = "None"
+                parameters = None
+
             print(f"Formatted Action: {action_name}, Parameters: {parameters}")
             action_list.append({"action": action_name, "param": parameters})
-            
-            self.action_and_parameters_in_semantic.append(
-                {action_name: semantic_parameters}
-            )
 
         for executable_action in action_list:
-            if executable_action["param"] == "None":
+            if executable_action["param"] is None:
                 param = (None,)
             else:
                 param = executable_action["param"]
-            action_dict_list += call_robot_function(
-                self.robot_info["robot_name"], executable_action["action"], *param
-            )
 
-        return action_dict_list
+            self.robot_action_class.add_actions(
+                executable_action["action"],
+                *param
+            )
+        
+        self.robot_action_class.action_finished = False
+    
+    def action_tracking(self,
+                        environment_description_list: List[Entity]):
+        """ Update current action_dict_list with the robot coordinates of the objects in the environment based on the latest perception results."""
+
+        current_low_level_action = self.robot_action_class.current_low_level_action()
+        if current_low_level_action is None:
+            print("No current action to track.")
+            return False, environment_description_list
+        entity_involved = current_low_level_action["entity"]
+        if(entity_involved is None):
+            print("No entity involved in the current action.")
+            return False, environment_description_list
+        if current_low_level_action["tracking"] is False:
+            return False, environment_description_list
+        
+        # Set the need_to_be_tracked flag for the entity involved in the low level action
+        # Reset tracking flags for all others entities
+        matched_entity = None
+        for entity in environment_description_list:
+            if entity.name == entity_involved.name:
+                matched_entity = entity
+                if not entity.tracked:
+                    entity.need_to_be_tracked = True
+            else:
+                entity.reset_tracking()
+
+        # # Check if the involved entity is still tracked
+        # if matched_entity is None or not matched_entity.found:
+        #     entity_involved.found = False
+        #     try_count = 0
+        #     while not entity_involved.found and try_count < self.max_try_to_find_entity:
+        #         print(f"Entity {entity_involved.name} lost, trying to find it again ({try_count+1}/{self.max_try_to_find_entity})...")
+        #         if self.perception.segment_one_entity(entity_involved.name):
+        #             print(f"Entity {entity_involved.name} found again.")
+        #         else:
+        #             print(f"Entity {entity_involved.name} not found, please adjust the camera.")
+        #             time.sleep(1)  # Wait before trying again
+        #         try_count += 1
+        #     if not entity_involved.found:
+        #         print(f"Failed to find entity {entity_involved.name} after {self.max_try_to_find_entity} attempts. Resetting action.")
+        #         self.robot_action_class.reset_action()
+        #         return False, environment_description_list
+        #     else:
+        #         matched_entity = next((ent for ent in environment_description_list if ent.name == entity_involved.name), None)
+        
+        # print(f'Entity {entity_involved.name}, pos: {matched_entity.robot_frame_pos}, found: {matched_entity.found}')
+        # Update the entity involved in the action with the latest perception results
+        self.robot_action_class.sync_action(matched_entity)
+
+        return True, environment_description_list
 
     def most_similar(self, target: str, compare_list: list, embedded_compare_list=None):
 
@@ -132,3 +146,44 @@ class ActionManager:
         most_similar_index = similarities.argmax().item()
 
         return compare_list[most_similar_index]
+
+def parse_action_text(action_text: str):
+    """
+    Parse the JSON output from the VLM/LLM that describes robot actions.
+
+    Expected format:
+    [
+      { "action": "pick and place", "parameters": ["toothpaste tube", "cup"] },
+      { "action": "open", "parameters": ["cup lid"] }
+    ]
+
+    Returns:
+        list[dict]: A list of dicts with keys 'action' and 'param'.
+    """
+    # Try to extract valid JSON (in case the model includes markdown formatting)
+    try:
+        # Remove markdown-style code fences if present
+        clean_text = re.sub(r"```(?:json)?", "", action_text).strip()
+        action_list_raw = json.loads(clean_text)
+    except json.JSONDecodeError:
+        print("⚠️ Warning: JSON decoding failed. Attempting fallback parsing.")
+        action_list_raw = []
+
+    # Normalize the data to your expected internal format
+    action_list = []
+    for entry in action_list_raw:
+        if not isinstance(entry, dict):
+            continue
+        action_name = entry.get("action", "").strip()
+        parameters = entry.get("parameters", [])
+        # Ensure parameters is always a list
+        if isinstance(parameters, str):
+            parameters = [parameters]
+        elif not isinstance(parameters, list):
+            parameters = []
+        action_list.append({
+            "action": action_name,
+            "param": [p.strip() for p in parameters if isinstance(p, str)]
+        })
+
+    return action_list

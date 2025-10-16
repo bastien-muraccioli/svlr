@@ -1,7 +1,9 @@
 from src.vlm import VLM
+from src.entity import Entity
 
 # import torch
 # from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
+from tools.robot_tool import RobotCamera
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2 as cv
@@ -12,14 +14,9 @@ from io import BytesIO
 import skimage.measure as sim
 import skimage.transform as sit
 import textwrap
-
-
-# def save_image(image_path: str, image_data):
-#     cv.imwrite(image_path, image_data)
-
-
 class Perception:
-    def __init__(self, vlm_name: str, vlm_provider: str):
+    def __init__(self, robot_camera: RobotCamera, vlm_name: str, vlm_provider: str):
+        self.robot_camera = robot_camera
         self.vlm_name = vlm_name
         self.vlm_provider = vlm_provider
         if vlm_provider != "Ollama":
@@ -28,93 +25,88 @@ class Perception:
             )
         self.seg_model_name = "language-segment-anything"
 
-        self.environment_description_list = []  # ["figurine", "cup", "table"]
-        self.centers_location = []  # [(x1,y1,z1), (x2,y2,z2), (x3,y3,z3)]
-        self.environment_pos = (
-            {}
-        )  # {'figurine':[x1,y1,z1], 'cup':[x2,y2,z2], 'table':[x3,y3,z3]}
+        self.environment_description_list = []  # entity class list
         self.mask_opacity = 0.1
 
         self.image = None
         self.frame_with_masks_and_centers = None
 
-        # Tracker dictionary
-        self.trackers = {}  # key: label, value: cv2.TrackerMIL instance
-        self.bboxes = {}    # key: label, value: latest bbox
-
-    def initialize_trackers(self, frame):
+    def initialize_trackers(self):
         """
-        Initialize MIL trackers for all detected objects after segmentation.
+        Initialize CSRT trackers for all detected objects after segmentation.
         """
-        self.trackers = {}
-
-        frame_np = np.array(frame.convert("RGB"))
+        frame_np = np.array(self.image.convert("RGB"))
         # We need the original masks to compute accurate bounding boxes
-        for label, center, bbox in zip(self.environment_description_list, self.centers_location, self.bboxes.values()):
-            # bbox is [x0, y0, x1, y1] from segmentation
-            x0, y0, x1, y1 = map(int, bbox)
+        for entity in self.environment_description_list:
+            if not entity.found:
+                continue
+            x0, y0, x1, y1 = map(int, entity.bbox)
             w = x1 - x0
             h = y1 - y0
             tracker_bbox = (x0, y0, w, h)
 
             tracker = cv.TrackerCSRT_create()
             tracker.init(frame_np, tracker_bbox)
-            self.trackers[label] = tracker
-            self.bboxes[label] = tracker_bbox
+            entity.tracker = tracker
+            entity.bbox = tracker_bbox
+            entity.tracked = True
 
     def update_trackers(self, frame):
         """
-        Update MIL trackers for the current frame.
+        Update CSRT trackers for the current frame.
         Updates centers_location and frame_with_masks_and_centers.
         """
         frame_PIL = Image.fromarray(cv.cvtColor(frame, cv.COLOR_BGR2RGB))
         frame_np = np.array(frame_PIL.convert("RGB"))
-        new_centers = []
-        new_bboxes = []
-        labels_to_remove = []
 
-        for label, tracker in self.trackers.items():
-            success, bbox = tracker.update(frame_np)
+        for entity in self.environment_description_list:
+            if not entity.found or not entity.tracked:
+                continue
+
+            success, bbox = entity.tracker.update(frame_np)
             if not success:
-                print(f"Tracking failed for {label}, removing.")
-                labels_to_remove.append(label)
+                print(f"Tracking failed for {entity.name}, removing.")
+                entity.found = False
+                entity.reset_tracking()
                 continue
 
             x, y, w, h = bbox
             cx = x + w / 2
             cy = y + h / 2
-            new_centers.append([cx, cy, 0])
-            new_bboxes.append([x, y, x + w, y + h])
-            self.bboxes[label] = [x, y, x + w, y + h]
+            xf = x+w
+            yf = y+h
+            entity.update_position((int(cx), int(cy)))
+            entity.bbox = [x, y, xf, yf]
+            mask = np.zeros(frame_np.shape[:2], dtype=np.uint8)
+            mask[y:yf, x:xf] = 255
+            entity.mask = mask
 
-        # Remove lost trackers
-        for label in labels_to_remove:
-            del self.trackers[label]
-            del self.bboxes[label]
-            self.environment_description_list.remove(label)
-
-        # Update centers and environment_pos
-        self.centers_location = new_centers
-        self.environment_pos = {
-            label: list(center) for label, center in zip(self.environment_description_list, new_centers)
-        }
 
         # Build frame visualization with updated bounding boxes
-        masks = []
-        for bbox in new_bboxes:
-            mask = np.zeros(frame_np.shape[:2], dtype=np.uint8)
-            x0, y0, x1, y1 = map(int, bbox)
-            mask[y0:y1, x0:x1] = 255
-            masks.append(mask)
-
-        self.build_frame_with_masks_and_centers(frame_np, masks, new_centers, self.environment_description_list)
+        self.build_frame_with_masks_and_centers(frame_np)
         return self.environment_description_list, cv.cvtColor(self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR)
 
 
-    def build_frame_with_masks_and_centers(self, original_frame, masks, centers, labels):
+    def build_frame_with_masks_and_centers(self, original_frame):
         """
         Combine original frame + yellow semi-transparent masks + red centroids with labels.
         """
+
+        masks = []
+        labels = []
+        bboxes = []
+        centers = []
+        robot_coords = []
+        for entity in self.environment_description_list:
+            if not entity.found or entity.mask is None or not entity.tracked:
+                continue
+            masks.append(entity.mask)
+            labels.append(entity.name)
+            centers.append(entity.pixel_pos)
+            bboxes.append(entity.bbox)
+            robot_coords.append(entity.robot_frame_pos)
+            # print(f"Entity '{entity.name}' at pixel {entity.pixel_pos} and robot frame {entity.robot_frame_pos}")
+
         # Ensure frame is BGR uint8
         frame = original_frame.copy()
         if frame.dtype != np.uint8:
@@ -143,13 +135,11 @@ class Perception:
 
         # Blend the overlay and the original frame
         blended = cv.addWeighted(frame, 1 - self.mask_opacity, overlay, self.mask_opacity, 0)
-
-        for bbox, label in zip(self.bboxes.values(), self.environment_description_list):
+        
+        # Draw bounding boxes, centroids and labels
+        for bbox, label, (x, y), robot_coord in zip(bboxes, labels, centers, robot_coords):
             x0, y0, x1, y1 = map(int, bbox)
             cv.rectangle(blended, (x0, y0), (x1, y1), (0, 255, 255), 2)  # yellow box
-
-        # Draw centroids and labels
-        for (x, y, _), label in zip(centers, labels):
             x, y = int(x), int(y)
             cv.circle(blended, (x, y), 6, (0, 0, 255), -1)  # red dot
             cv.putText(
@@ -157,9 +147,21 @@ class Perception:
                 label,
                 (x + 10, y - 10),
                 cv.FONT_HERSHEY_SIMPLEX,
-                0.6,
+                0.5,
                 (0, 0, 255),
                 2,
+                cv.LINE_AA,
+            )
+            coord_text = f"({robot_coord[0]*1000:.0f}, {robot_coord[1]*1000:.0f}, {robot_coord[2]*1000:.0f})mm"
+            wrapped_text = textwrap.fill(coord_text, width=30)
+            cv.putText(
+                blended,
+                wrapped_text,
+                (x + 10, y + 10),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (0, 0, 255),
+                1,
                 cv.LINE_AA,
             )
 
@@ -219,18 +221,17 @@ class Perception:
         imgs_seg = []
         centers  = []
         bboxes   = []  # store bounding boxes from segmentation
-        not_found = []
 
-        # Loop over each prompt individually
-        for i, prompt in enumerate(self.environment_description_list):
-            result = model.predict([image_pil], [prompt])[0]
+        # Loop over each entity individually
+        for entity in self.environment_description_list:
+            result = model.predict([image_pil], [entity.name])[0]
 
             # Take only the highest‑confidence mask
             masks  = result["masks"]
             scores = result["scores"]
             if scores is None or np.size(scores) == 0 or masks is None or len(masks) == 0:
-                print(f"No segmentation found for '{prompt}', skipping.")
-                not_found.append(prompt)
+                print(f"No segmentation found for '{entity.name}', skipping.")
+                self.environment_description_list.remove(entity)
                 continue
 
             best_idx = int(np.argmax(scores))
@@ -239,11 +240,11 @@ class Perception:
             # Compute centroid & bbox
             center, bbox = self.centroid_segmentation(best_mask)
             if center is None or bbox is None:
-                not_found.append(prompt)
+                self.environment_description_list.remove(entity)
                 continue
 
-            # Store 2D center + dummy Z=0
-            centers.append([center[0], center[1], 0])
+            # Store 2D center
+            centers.append([center[0], center[1]])
             bboxes.append(bbox)  # save bbox for tracker initialization
 
             # Draw box+center on mask for visualization
@@ -253,17 +254,14 @@ class Perception:
             cv.circle(vis, (int(center[0]), int(center[1])), 5, (255,255,255), -1)
             imgs_seg.append(vis)
 
-        # Remove not‑found prompts from your list
-        for nf in not_found:
-            print(f"Object: {nf} not found, removing from descriptions")
-            self.environment_description_list.remove(nf)
-
         if not centers:
-            return []
+            print("No objects found in segmentation.")
+            return
 
         # Rescale centers and bboxes back to original image dimensions
         orig_w, orig_h = self.image.size
         mask_h, mask_w = (imgs_seg[0].shape[:2] if imgs_seg else (1,1))
+        final_img = image_np.copy()
         for i, c in enumerate(centers):
             c[0] = c[0] * orig_w / mask_w
             c[1] = c[1] * orig_h / mask_h
@@ -275,21 +273,84 @@ class Perception:
                 x1 * orig_w / mask_w,
                 y1 * orig_h / mask_h,
             ]
-
-        # Save bounding boxes for tracker initialization
-        self.bboxes = {label: bbox for label, bbox in zip(self.environment_description_list, bboxes)}
-
-        # Draw final centers on a copy of the original
-        final_img = image_np.copy()
-        for x, y, _ in centers:
-            cv.circle(final_img, (int(x), int(y)), 20, (255, 0, 0), -1)
+            cv.circle(final_img, (int(c[0]), int(c[1])), 20, (255, 0, 0), -1)
+        
+        # Update entity positions, masks and bboxes
+        for i, entity in enumerate(self.environment_description_list):
+            entity.update_position((int(centers[i][0]), int(centers[i][1])))
+            entity.bbox = bboxes[i]
+            entity.mask = imgs_seg[i]           
 
         # Build composite frame with masks and centers
-        self.build_frame_with_masks_and_centers(image_np, imgs_seg, centers, self.environment_description_list)
+        self.build_frame_with_masks_and_centers(image_np)
 
-        # Save centers
-        self.centers_location = centers
-        return centers
+    def segment_one_entity(self, entity_name: str):
+        """
+         Segment one entity from the image and add it to the environment description list.
+         Returns True if successful, False otherwise.
+        """
+        print(f"Run Image Segmentation model {self.seg_model_name} for entity '{entity_name}'")
+        # Initialize model
+        model = LangSAM()
+
+        # Convert PIL to RGB and keep original NumPy for processing
+        image_pil = self.image.convert("RGB")
+        image_np = np.array(image_pil)
+
+        result = model.predict([image_pil], [entity_name])[0]
+
+        # Take only the highest‑confidence mask
+        masks  = result["masks"]
+        scores = result["scores"]
+        if scores is None or np.size(scores) == 0 or masks is None or len(masks) == 0:
+            print(f"No segmentation found for '{entity_name}', skipping.")
+            return False
+
+        best_idx = int(np.argmax(scores))
+        best_mask = (masks[best_idx].astype(np.uint8) * 255)
+
+        # Compute centroid & bbox
+        center, bbox = self.centroid_segmentation(best_mask)
+        if center is None or bbox is None:
+            return False
+        # Store 2D center
+        center[0] = center[0] * self.image.size[0] / best_mask.shape[1]
+        center[1] = center[1] * self.image.size[1] / best_mask.shape[0]
+        # Scale bounding boxes
+        x0, y0, x1, y1 = bbox
+        bbox = [
+            x0 * self.image.size[0] / best_mask.shape[1],
+            y0 * self.image.size[1] / best_mask.shape[0],
+            x1 * self.image.size[0] / best_mask.shape[1],
+            y1 * self.image.size[1] / best_mask.shape[0],
+        ]
+
+        entity = Entity(entity_name, self.robot_camera)
+        entity.update_position((int(center[0]), int(center[1])))
+        entity.mask = best_mask
+
+        x0, y0, x1, y1 = map(int, bbox)
+        w = x1 - x0
+        h = y1 - y0
+        tracker_bbox = (x0, y0, w, h)
+
+        tracker = cv.TrackerCSRT_create()
+        tracker.init(image_np, tracker_bbox)
+        entity.tracker = tracker
+        entity.bbox = tracker_bbox
+        entity.tracked = True
+        entity.found = True
+        entity.need_to_be_tracked = False  # Already found
+
+        #  Check if entity with same name already exists, if so replace it
+        for i, existing_entity in enumerate(self.environment_description_list):
+            if existing_entity.name == entity_name:
+                self.environment_description_list[i] = entity
+                return True
+
+        self.environment_description_list.append(entity)
+
+        return True
 
 
     def run(self, image):
@@ -304,17 +365,14 @@ class Perception:
         # VLM
         print("Starting VLM")
         vlm = VLM(self.vlm_name, ollama_image)
-        self.environment_description_list = vlm.run_and_parse()
+        entities_name_found = vlm.run_and_parse()
+        self.environment_description_list = [Entity(name, self.robot_camera) for name in entities_name_found]
 
         # Segmentation
         print("Starting Segmentation")
-        self.centers_location = self.segmentation()
-        self.environment_pos = {
-            item: list(coord)
-            for item, coord in zip(
-                self.environment_description_list, self.centers_location
-            )
-        }
+        self.segmentation()
+
         # Initialize trackers
-        self.initialize_trackers(self.image)
+        self.initialize_trackers()
+
         return self.environment_description_list, vlm.raw_output, cv.cvtColor(self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR)
