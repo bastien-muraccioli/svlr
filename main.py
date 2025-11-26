@@ -1,4 +1,10 @@
 import json
+import os
+os.environ["TORCH_CUDNN_SDPA_ENABLED"] = "1"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+import torch
+
+
 from platform import node
 import time
 import cv2
@@ -10,16 +16,9 @@ from control_loop import ControlLoop
 from tools.read_camera import get_camera_image, get_camera_image_ros
 from tools.read_json import read_robot_json
 
-import cv2
-import time
-import os
-
 from transformers import logging
 logging.set_verbosity_error()
 
-import time
-import cv2
-import gradio as gr
 
 class SVLR:
     """Scalable Visual Language Robotics (SVLR) Interface"""
@@ -433,6 +432,7 @@ def parser_args():
         "--llm_name",
         type=str,
         default="gemma3n:e4b",
+        # default="granite3.2-vision",
         help="LLM name",
     )
     parser.add_argument(

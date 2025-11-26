@@ -1,8 +1,10 @@
+from xml.parsers.expat import model
 from src.vlm import VLM
 from src.entity import Entity
 
-# import torch
-# from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
+from transformers import EdgeTamVideoModel, Sam2VideoProcessor
+import torch
+
 from tools.robot_tool import RobotCamera
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +16,27 @@ from io import BytesIO
 import skimage.measure as sim
 import skimage.transform as sit
 import textwrap
+
+TARGET_W = 640
+TARGET_H = 360
+
+def resize_frame_for_inference(frame):
+    """
+    Downscale frame to 640x360 for EdgeTAM/SAM2 inference,
+    keep aspect ratio safe, and return:
+    - small frame (for model)
+    - original frame
+    - scale ratios to convert masks back
+    """
+    orig_h, orig_w = frame.shape[:2]
+
+    small = cv.resize(frame, (TARGET_W, TARGET_H), interpolation=cv.INTER_AREA)
+
+    scale_x = orig_w / TARGET_W
+    scale_y = orig_h / TARGET_H
+
+    return small, frame, (scale_x, scale_y)
+
 class Perception:
     def __init__(self, robot_camera: RobotCamera, vlm_name: str, vlm_provider: str):
         self.robot_camera = robot_camera
@@ -26,65 +49,175 @@ class Perception:
         self.seg_model_name = "language-segment-anything"
 
         self.environment_description_list = []  # entity class list
-        self.mask_opacity = 0.1
+        self.mask_opacity = 0.2
 
         self.image = None
         self.frame_with_masks_and_centers = None
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.edgetam_model = EdgeTamVideoModel.from_pretrained("yonigozlan/EdgeTAM-hf").to(self.device, dtype=torch.float16)
+        self.edgetam_processor = Sam2VideoProcessor.from_pretrained("yonigozlan/EdgeTAM-hf")
+        self.inference_sessions = {}  # key: entity_name -> session
+
+        self.session_reset_interval = 100  # reset every N frames to avoid memory leak
+        self.local_frame_idx = {}  # key: entity_name -> local frame index
+        self.edgetam_session = None
+
 
     def initialize_trackers(self):
-        """
-        Initialize CSRT trackers for all detected objects after segmentation.
-        """
-        frame_np = np.array(self.image.convert("RGB"))
-        # We need the original masks to compute accurate bounding boxes
+        frame_np = np.array(self.image.convert("RGB")).copy()
+
+        # Downscale for EdgeTAM
+        small_frame, original_frame, (sx, sy) = resize_frame_for_inference(frame_np)
+
         for entity in self.environment_description_list:
             if not entity.found:
                 continue
-            x0, y0, x1, y1 = map(int, entity.bbox)
-            w = x1 - x0
-            h = y1 - y0
-            tracker_bbox = (x0, y0, w, h)
 
-            tracker = cv.TrackerCSRT_create()
-            tracker.init(frame_np, tracker_bbox)
-            entity.tracker = tracker
-            entity.bbox = tracker_bbox
+            session = self.edgetam_processor.init_video_session(
+                inference_device=self.device,
+                dtype=torch.float16
+            )
+
+            # Scale bbox to small frame
+            x0, y0, x1, y1 = map(int, entity.bbox)
+            x0 = int(x0 / sx)
+            y0 = int(y0 / sy)
+            x1 = int(x1 / sx)
+            y1 = int(y1 / sy)
+            input_boxes = [[[x0, y0, x1, y1]]]
+
+            rgb_small_pil = Image.fromarray(small_frame)
+            inputs = self.edgetam_processor(rgb_small_pil, device=self.device, return_tensors="pt")
+            original_size = inputs.original_sizes[0]
+
+            self.edgetam_processor.add_inputs_to_inference_session(
+                inference_session=session,
+                frame_idx=0,
+                obj_ids=1,
+                input_boxes=input_boxes,
+                original_size=original_size,
+            )
+
+            self.inference_sessions[entity.name] = session
+            self.local_frame_idx[entity.name] = 1
             entity.tracked = True
 
+
+    def _reset_session(self, entity, current_frame_np):
+        """Safely resets an EdgeTAM session for a single entity."""
+        print(f"[EdgeTAM] Resetting session for '{entity.name}' to prevent memory leak...")
+
+        # Delete old session
+        old_session = self.inference_sessions.get(entity.name, None)
+        if old_session:
+            del old_session
+
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+
+        # Downscale frame
+        small_frame, original_frame, (sx, sy) = resize_frame_for_inference(current_frame_np)
+
+        # Recreate session
+        session = self.edgetam_processor.init_video_session(
+            inference_device=self.device,
+            dtype=torch.float16,
+        )
+
+        # Scale bbox to small frame
+        x0, y0, x1, y1 = map(int, entity.bbox)
+        x0 = int(x0 / sx)
+        y0 = int(y0 / sy)
+        x1 = int(x1 / sx)
+        y1 = int(y1 / sy)
+        input_boxes = [[[x0, y0, x1, y1]]]
+
+        rgb_small_pil = Image.fromarray(small_frame)
+        inputs = self.edgetam_processor(rgb_small_pil, device=self.device, return_tensors="pt")
+        original_size = inputs.original_sizes[0]
+
+        self.edgetam_processor.add_inputs_to_inference_session(
+            inference_session=session,
+            frame_idx=0,
+            obj_ids=1,
+            input_boxes=input_boxes,
+            original_size=original_size,
+        )
+
+        self.inference_sessions[entity.name] = session
+        self.local_frame_idx[entity.name] = 1
+
+
+
     def update_trackers(self, frame):
-        """
-        Update CSRT trackers for the current frame.
-        Updates centers_location and frame_with_masks_and_centers.
-        """
-        frame_PIL = Image.fromarray(cv.cvtColor(frame, cv.COLOR_BGR2RGB))
-        frame_np = np.array(frame_PIL.convert("RGB"))
+        frame_np = np.array(Image.fromarray(cv.cvtColor(frame, cv.COLOR_BGR2RGB))).copy()
+
+        # Downscale for EdgeTAM
+        small_frame, original_frame, (sx, sy) = resize_frame_for_inference(frame_np)
 
         for entity in self.environment_description_list:
             if not entity.found or not entity.tracked:
                 continue
 
-            success, bbox = entity.tracker.update(frame_np)
-            if not success:
-                print(f"Tracking failed for {entity.name}, removing.")
-                entity.found = False
-                entity.reset_tracking()
+            session = self.inference_sessions.get(entity.name, None)
+            if session is None:
                 continue
 
-            x, y, w, h = bbox
-            cx = x + w / 2
-            cy = y + h / 2
-            xf = x+w
-            yf = y+h
-            entity.update_position((int(cx), int(cy)))
-            entity.bbox = [x, y, xf, yf]
-            mask = np.zeros(frame_np.shape[:2], dtype=np.uint8)
-            mask[y:yf, x:xf] = 255
-            entity.mask = mask
+            # Handle VRAM-safe session reset
+            if self.local_frame_idx[entity.name] % self.session_reset_interval == 0:
+                self._reset_session(entity, frame_np)
+                session = self.inference_sessions[entity.name]
 
+            # Prepare input
+            rgb_small_pil = Image.fromarray(small_frame)
+            with torch.inference_mode():
+                inputs = self.edgetam_processor(
+                    images=rgb_small_pil, device=self.device, return_tensors="pt"
+                )
 
-        # Build frame visualization with updated bounding boxes
-        self.build_frame_with_masks_and_centers(frame_np)
-        return self.environment_description_list, cv.cvtColor(self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR)
+                pixel_values = inputs.pixel_values[0].half().contiguous()
+
+                with torch.cuda.amp.autocast(dtype=torch.float16):
+                    outputs = self.edgetam_model(
+                        inference_session=session,
+                        frame=pixel_values
+                    )
+
+                mask_tensor = self.edgetam_processor.post_process_masks(
+                    [outputs.pred_masks],
+                    original_sizes=inputs.original_sizes,
+                    binarize=True
+                )[0]
+
+            # Mask to numpy
+            mask_np = mask_tensor.squeeze().cpu().numpy()
+            if mask_np.size == 0 or np.isnan(mask_np).any():
+                mask_np = np.zeros(small_frame.shape[:2], dtype=np.uint8)
+            else:
+                mask_np = (mask_np * 255).astype(np.uint8)
+
+            # Upscale mask back to original frame
+            mask_np = cv.resize(mask_np, (original_frame.shape[1], original_frame.shape[0]), interpolation=cv.INTER_NEAREST)
+
+            # Compute centroid and bbox
+            centroid, bbox = self.centroid_segmentation(mask_np)
+            if centroid is not None:
+                entity.update_position((int(centroid[0]), int(centroid[1])))
+                entity.bbox = bbox
+                entity.mask = mask_np
+            else:
+                entity.reset_tracking()
+                self.inference_sessions.pop(entity.name, None)
+
+            # increment local index
+            self.local_frame_idx[entity.name] += 1
+
+        # Build visualization
+        self.build_frame_with_masks_and_centers(original_frame)
+        return self.environment_description_list, cv.cvtColor(
+            self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR
+        )
+
 
 
     def build_frame_with_masks_and_centers(self, original_frame):
@@ -215,7 +348,7 @@ class Perception:
         model = LangSAM()
 
         # Convert PIL to RGB and keep original NumPy for processing
-        image_pil = self.image.convert("RGB")
+        image_pil = self.image.convert("RGB").copy()
         image_np = np.array(image_pil)
 
         imgs_seg = []
@@ -224,7 +357,8 @@ class Perception:
 
         # Loop over each entity individually
         for entity in self.environment_description_list:
-            result = model.predict([image_pil], [entity.name])[0]
+            with torch.cuda.amp.autocast(dtype=torch.float16):
+                result = model.predict([image_pil], [entity.name])[0]
 
             # Take only the highest‑confidence mask
             masks  = result["masks"]
@@ -294,10 +428,11 @@ class Perception:
         model = LangSAM()
 
         # Convert PIL to RGB and keep original NumPy for processing
-        image_pil = self.image.convert("RGB")
-        image_np = np.array(image_pil)
+        image_pil = self.image.convert("RGB").copy()
+        # image_np = np.array(image_pil)
 
-        result = model.predict([image_pil], [entity_name])[0]
+        with torch.cuda.amp.autocast(dtype=torch.float16):
+            result = model.predict([image_pil], [entity_name])[0]
 
         # Take only the highest‑confidence mask
         masks  = result["masks"]
@@ -325,22 +460,30 @@ class Perception:
             y1 * self.image.size[1] / best_mask.shape[0],
         ]
 
+        # After computing mask and bbox
         entity = Entity(entity_name, self.robot_camera)
         entity.update_position((int(center[0]), int(center[1])))
         entity.mask = best_mask
 
+        # Initialize EdgeTam session
+        session = self.edgetam_processor.init_video_session(
+            inference_device=self.device,
+            dtype=torch.float16
+        )
+        inputs = self.edgetam_processor(self.image.convert("RGB"), device=self.device, return_tensors="pt")
+        original_size = inputs.original_sizes[0]
         x0, y0, x1, y1 = map(int, bbox)
-        w = x1 - x0
-        h = y1 - y0
-        tracker_bbox = (x0, y0, w, h)
-
-        tracker = cv.TrackerCSRT_create()
-        tracker.init(image_np, tracker_bbox)
-        entity.tracker = tracker
-        entity.bbox = tracker_bbox
+        input_boxes = [[[x0, y0, x1, y1]]]
+        self.edgetam_processor.add_inputs_to_inference_session(
+            inference_session=session,
+            frame_idx=0,
+            obj_ids=1,
+            input_boxes=input_boxes,
+            original_size=original_size,
+        )
+        self.inference_sessions[entity_name] = session
         entity.tracked = True
         entity.found = True
-        entity.need_to_be_tracked = False  # Already found
 
         #  Check if entity with same name already exists, if so replace it
         for i, existing_entity in enumerate(self.environment_description_list):

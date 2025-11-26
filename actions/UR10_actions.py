@@ -65,9 +65,25 @@ class UR10Actions(RobotActions):
             {"function": "go_high", "params": [pick_entity, self.gripper_open], "entity": pick_entity, "tracking": True},
             {"function": "go_low", "params": [pick_entity, self.gripper_close], "entity": pick_entity, "tracking": False},
             {"function": "go_high", "params": [pick_entity, self.gripper_close], "entity": pick_entity, "tracking": False},
-            {"function": "go_high", "params": [place_entity, self.gripper_close], "entity": place_entity, "tracking": True},
+            {"function": "go_high", "params": [place_entity, self.gripper_close], "entity": place_entity, "tracking": False},
             {"function": "go_low", "params": [place_entity, self.gripper_open], "entity": place_entity, "tracking": False},
             {"function": "go_high", "params": [place_entity, self.gripper_open], "entity": place_entity, "tracking": False},
+        ]
+        return low_level_actions
+    
+    def pick(self, entity: Entity):
+        low_level_actions = [
+            {"function": "go_high", "params": [entity, self.gripper_open], "entity": entity, "tracking": True},
+            {"function": "go_low", "params": [entity, self.gripper_close], "entity": entity, "tracking": False},
+            {"function": "go_high", "params": [entity, self.gripper_close], "entity": entity, "tracking": False},
+        ]
+        return low_level_actions
+    
+    def place(self, entity: Entity):
+        low_level_actions = [
+            {"function": "go_high", "params": [entity, self.gripper_close], "entity": entity, "tracking": True},
+            {"function": "go_low", "params": [entity, self.gripper_open], "entity": entity, "tracking": False},
+            {"function": "go_high", "params": [entity, self.gripper_open], "entity": entity, "tracking": False},
         ]
         return low_level_actions
     

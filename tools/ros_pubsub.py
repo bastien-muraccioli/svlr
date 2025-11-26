@@ -14,6 +14,7 @@ from rclpy.task import Future
 from sensor_msgs.msg import Image, PointCloud2
 from sensor_msgs_py import point_cloud2
 from cv_bridge import CvBridge
+from sensor_msgs.msg import CameraInfo
 import struct
 
 
@@ -102,6 +103,8 @@ class RosPubSub(Node):
         """
         Waits for a PointCloud2 message from the RealSense camera.
         """
+        # NO STABLE
+        return None
         future = Future()
 
         def callback(msg):
@@ -118,10 +121,13 @@ class RosPubSub(Node):
 
         return future.result()
 
+
     def get_3d_point_from_pixel(self, pointcloud_msg, u, v):
         """
         Given a pixel coordinate (u, v) in the organized point cloud, returns (x, y, z).
         """
+        # NO STABLE
+        return None
         try:
             width = pointcloud_msg.width
             height = pointcloud_msg.height
@@ -130,7 +136,7 @@ class RosPubSub(Node):
 
             # Safety check
             if u < 0 or v < 0 or u >= width or v >= height:
-                self.get_logger().warn("Pixel coordinate out of bounds.")
+                self.get_logger().warn(f"Pixel coordinate out of bounds: ({u}, {v}), pointcloud size: ({width}, {height})")
                 return None
 
             # Compute index of the pixel in the data array

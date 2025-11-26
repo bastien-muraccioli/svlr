@@ -1,4 +1,5 @@
 from tools.read_json import read_llm_prompt_json
+from src.vlm import VLM
 
 import os
 from dotenv import load_dotenv
@@ -8,8 +9,12 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 
 class LLM:
     def __init__(
-        self, model_name: str, provider: str, is_chat: bool, temperature: float = 0.2
+        self, model_name: str, provider: str, is_chat: bool, temperature: float = 0.2, llm_is_vlm: bool = False
     ):
+        self.llm_is_vlm = llm_is_vlm
+        self.vlm = None
+        if self.llm_is_vlm:
+            self.vlm = VLM(vlm_name=model_name)
         self.is_chat = is_chat
         self.model_name = model_name
         self.provider = provider
@@ -58,11 +63,11 @@ class LLM:
 
         elif self.provider == "Ollama":
             from langchain_ollama.llms import OllamaLLM
-
-            self.model = OllamaLLM(
-                model=self.model_name,
-                temperature=self.temperature,
-            )
+            if not self.llm_is_vlm:
+                self.model = OllamaLLM(
+                    model=self.model_name,
+                    temperature=self.temperature,
+                )
             if self.is_chat:
                 self.prompt_template = ChatPromptTemplate.from_messages(
                     [("system", self.prompt_system), ("user", "{content}")]
@@ -119,5 +124,8 @@ class LLM:
             self.prompt_template = PromptTemplate.from_template(self.prompt_system)
 
     def run(self, prompt: str):
-        chain = self.prompt_template | self.model | StrOutputParser()
-        return chain.invoke({"content": prompt})
+        if self.llm_is_vlm:
+            return self.vlm.use_as_a_llm(prompt)
+        else:
+            chain = self.prompt_template | self.model | StrOutputParser()
+            return chain.invoke({"content": prompt})

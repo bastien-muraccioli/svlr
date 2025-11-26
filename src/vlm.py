@@ -2,50 +2,12 @@ import requests
 import json
 import time
 
-# from transformers import AutoTokenizer, AutoModel
-# import torch
-# import torchvision.transforms as T
-# from torchvision.transforms.functional import InterpolationMode
-
-
 class VLM:
-    def __init__(self, vlm_name: str, image):
-
-        # self.IMAGENET_MEAN = (0.485, 0.456, 0.406)
-        # self.IMAGENET_STD = (0.229, 0.224, 0.225)
-
-        # print(
-        #     f"VLM {vlm_name} runs on {torch.device('cuda' if torch.cuda.is_available() else 'cpu')}"
-        # )
-        # self.model = (
-        #     AutoModel.from_pretrained(
-        #         vlm_name,
-        #         torch_dtype=torch.float16,
-        #         low_cpu_mem_usage=True,
-        #         trust_remote_code=True,
-        #     )
-        #     .eval()
-        #     .cuda()
-        # )
-
-        # self.tokenizer = AutoTokenizer.from_pretrained(vlm_name, trust_remote_code=True)
+    def __init__(self, vlm_name: str, image=None):
 
         self.name = vlm_name
         self.raw_output = ""
         self.image = image
-        # self.image_size = 448  # image will be resized to (image_size x image_size) for fast processing
-
-        # # set the max number of tiles in `max_num`
-        # self.pixel_values = self.load_image(max_num=6).to(torch.float16).cuda()
-
-        # # Test param modifications
-        # self.generation_config = dict(
-        #     max_new_tokens=512,
-        #     do_sample=True,
-        #     temperature=0.2,
-        #     top_p=0.7,
-        #     repetition_penalty=1.1,
-        # )
 
         self.prompt = \
 """You see a top-down view of an image.
@@ -59,13 +21,6 @@ Respond only as a valid JSON array of strings, one string per entity.
 Example:
 ["white ceramic cup", "silver spoon", "brown wooden table"]
 """
-        
-        # "List all distinct, interactive objects visible in the image. Respond only as a JSON array of strings, with one string per object."
-        # \
-# """You see a top-down view. List all distinct, interactive objects visible in the image.
-# Only one object per line.
-# Ignore background elements like the table, floor, or any non-interactive surfaces."""
-
 
     def run(self):
         # single-round single-image conversation
@@ -73,7 +28,36 @@ Example:
         response = requests.post("http://localhost:11434/api/generate", json={
             "model": self.name,
             "prompt": self.prompt,
-            "images": [self.image]
+            "images": [self.image],
+        }, stream=True)
+        output = ""
+        if response.status_code == 200:
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        data = json.loads(line.decode("utf-8"))
+                        output += data.get("response", "")
+                    except json.JSONDecodeError:
+                        print("Could not decode:", line)
+            # print("Answer:", output.strip())
+        else:
+            print("Request failed with status", response.status_code)
+            print(response.text)
+        end = time.time()
+        print(f"VLM {self.name} Inference time = {end - start}s")
+        print(f"VLM Prompt = {self.prompt}")
+        print(f"VLM Response = {output.strip()}")
+        #  Unload the model to save memory
+        requests.post("http://localhost:11434/api/generate", json={
+            "model": self.name,
+            "keep_alive": 0})
+        return output.strip()
+    
+    def use_as_a_llm(self, prompt: str):
+        start = time.time()
+        response = requests.post("http://localhost:11434/api/generate", json={
+            "model": self.name,
+            "prompt": prompt,
         }, stream=True)
         output = ""
         if response.status_code == 200:

@@ -28,6 +28,10 @@ class ControlLoop:
         self.vlm_name = args.vlm_name
         self.vlm_provider = args.vlm_provider
 
+        self.llm_is_vlm = True if self.llm_name == self.vlm_name else False
+        if self.llm_is_vlm:
+            print("LLM is VLM")
+
         self.node = node  # ROS node will be initialized in main.py
 
         robot_camera = RobotCamera(args, node=self.node)
@@ -55,6 +59,7 @@ class ControlLoop:
             temperature=self.llm_temperature,
             provider=self.llm_provider,
             is_chat=self.llm_is_chat,
+            llm_is_vlm=self.llm_is_vlm,
         )
         print(f"Generated Prompt:\n{self.llm.prompt_system.format(content=prompt)}")
         llm_output = self.llm.run(prompt)

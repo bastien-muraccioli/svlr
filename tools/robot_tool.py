@@ -36,6 +36,19 @@ class RobotCamera:
         ).reshape(5)
 
     def pixel_to_camera_coordinates(self, pixel_pose: list) -> list:
+        if self.node:
+            # print("Getting 3D point from ROS pointcloud...")
+            pc_msg = self.node.get_pointcloud_message(timeout_sec=0.1)
+            if pc_msg:
+                # print("3D point from ROS pointcloud:")
+                point = self.node.get_3d_point_from_pixel(pc_msg, pixel_pose[0], pixel_pose[1])
+                if point:
+                    camera_pose = point
+                    self.ros_depth = point[2]
+                    # print(f"3D point from ROS pointcloud: {camera_pose}")
+                    self.depth_camera_flag = True
+                    return camera_pose
+
         # Depth of the object in meters
         if self.depth_camera_flag:
             depth = self.ros_depth
@@ -91,7 +104,12 @@ class RobotCamera:
         robot_pose[1] = (
             -camera_pose[1] + self.robot_last_pose[1] + self.robot_info["eye_to_hand"]["dy"]
         )  # y
-        robot_pose[2] = - camera_pose[2] + self.robot_last_pose[2]  # z
+        if self.depth_camera_flag:
+            robot_pose[2] = (
+                    camera_pose[2] - self.robot_last_pose[2]
+                )  # z
+        else:
+            robot_pose[2] = - camera_pose[2] + self.robot_last_pose[2]  # z
         # For the moment we fix the Z manually (no depth with camera), so we keep the same Z
         # robot_pose[2] = camera_pose[2] + self.robot_info["eye_to_hand"]["dz"]  # z
 
@@ -102,19 +120,24 @@ class RobotCamera:
 
 
     def pixel_to_robot(self, pixel_pose: list) -> list:
+        self.depth_camera_flag = False
         if self.node:
+            print("Getting 3D point from ROS pointcloud...")
             pc_msg = self.node.get_pointcloud_message(timeout_sec=0.1)
             if pc_msg:
+                print("3D point from ROS pointcloud:")
                 point = self.node.get_3d_point_from_pixel(pc_msg, pixel_pose[0], pixel_pose[1])
                 if point:
                     camera_pose = point
                     self.ros_depth = point[2]
+                    print(f"3D point from ROS pointcloud: {camera_pose}")
                     self.depth_camera_flag = True
                 else:
                     camera_pose = self.pixel_to_camera_coordinates(pixel_pose)
             else:
                     camera_pose = self.pixel_to_camera_coordinates(pixel_pose)
         else:
+            print("No ROS node available, using camera model for 3D point computation.")
             camera_pose = self.pixel_to_camera_coordinates(pixel_pose)
 
         # print(f"Camera coordinates: {camera_pose}")
