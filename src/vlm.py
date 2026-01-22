@@ -29,6 +29,7 @@ Example:
             "model": self.name,
             "prompt": self.prompt,
             "images": [self.image],
+            "keep_alive": 0,
         }, stream=True)
         output = ""
         if response.status_code == 200:
@@ -47,10 +48,6 @@ Example:
         print(f"VLM {self.name} Inference time = {end - start}s")
         print(f"VLM Prompt = {self.prompt}")
         print(f"VLM Response = {output.strip()}")
-        #  Unload the model to save memory
-        requests.post("http://localhost:11434/api/generate", json={
-            "model": self.name,
-            "keep_alive": 0})
         return output.strip()
     
     def use_as_a_llm(self, prompt: str):
@@ -58,6 +55,7 @@ Example:
         response = requests.post("http://localhost:11434/api/generate", json={
             "model": self.name,
             "prompt": prompt,
+            "keep_alive": 0,
         }, stream=True)
         output = ""
         if response.status_code == 200:
@@ -73,13 +71,9 @@ Example:
             print("Request failed with status", response.status_code)
             print(response.text)
         end = time.time()
-        print(f"VLM {self.name} Inference time = {end - start}s")
-        print(f"VLM Prompt = {self.prompt}")
-        print(f"VLM Response = {output.strip()}")
-        #  Unload the model to save memory
-        requests.post("http://localhost:11434/api/generate", json={
-            "model": self.name,
-            "keep_alive": 0})
+        print(f"LLM: {self.name} Inference time = {end - start}s")
+        print(f"LLM Prompt = {self.prompt}")
+        print(f"LLM Response = {output.strip()}")
         return output.strip()
 
     def parse_vlm_output(self):

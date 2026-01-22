@@ -17,6 +17,28 @@
   },
   "actions": [
     {
+      "name": "move_to",
+      "program": "UR10_move_to",
+      "description": "Moves the robot arm above a specified object.",
+      "parameters": [
+        {
+          "type": "string",
+          "description": "[object's name]",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "open_gripper",
+      "program": "UR10_gripper",
+      "description": "Opens the gripper attached to the robot arm."
+    },
+    {
+      "name": "close_gripper",
+      "program": "UR10_gripper",
+      "description": "Closes the gripper attached to the robot arm."
+    },
+    {
       "name": "pick_and_place",
       "program": "UR10_pick_place",
       "description": "Picks up an object and place it next to another one. By using this action, you don't need to use the move_to and open/close_gripper actions separately.",

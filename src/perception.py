@@ -102,6 +102,16 @@ class Perception:
             self.local_frame_idx[entity.name] = 1
             entity.tracked = True
 
+    def reset_all_session(self):
+        """Safely resets all EdgeTAM sessions to prevent memory leaks."""
+        for entity in self.environment_description_list:
+            # Delete old session
+            old_session = self.inference_sessions.get(entity.name, None)
+            if old_session:
+                del old_session
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+
 
     def _reset_session(self, entity, current_frame_np):
         """Safely resets an EdgeTAM session for a single entity."""

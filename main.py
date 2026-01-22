@@ -180,6 +180,9 @@ class SVLR:
                 ret, self.camera_frame  = cap.read()
                 if not ret:
                     break
+            elif self.simulation_mode:
+                # self.camera_frame = cv2.imread(simulation_image_path)
+                time.sleep(0.1)
             else:
                 print("No camera source available")
                 break
@@ -190,7 +193,7 @@ class SVLR:
 
             if self.perception_pipeline_has_run is False or self.perception_pipeline_is_running:
                 self.frame_with_masks_and_centers = cv2.cvtColor(self.camera_frame, cv2.COLOR_BGR2RGB)
-            elif self.perception_pipeline_has_run is True and not (self.simulation_mode and not self.args.use_camera_in_simulation):
+            elif self.perception_pipeline_has_run is True: # and not (self.simulation_mode and not self.args.use_camera_in_simulation):
                 self.objects_found, self.frame_with_masks_and_centers = self.controller.perception.update_trackers(self.camera_frame)
 
             yield self.frame_with_masks_and_centers
@@ -329,6 +332,7 @@ class SVLR:
                         print("Ready for next action")
                         if all_steps_successful:
                             print("All actions are done")
+                            self.controller.perception.reset_all_session()                                
                             self.language_pipeline_has_run = False
                             self.robot_is_idle = True
                             self.end_action_received = True
@@ -432,7 +436,6 @@ def parser_args():
         "--llm_name",
         type=str,
         default="gemma3n:e4b",
-        # default="granite3.2-vision",
         help="LLM name",
     )
     parser.add_argument(

@@ -1,5 +1,8 @@
 from tools.read_json import read_llm_prompt_json
 from src.vlm import VLM
+import time
+import requests
+import json
 
 import os
 from dotenv import load_dotenv
@@ -62,12 +65,12 @@ class LLM:
                 self.prompt_template = PromptTemplate.from_template(self.prompt_system)
 
         elif self.provider == "Ollama":
-            from langchain_ollama.llms import OllamaLLM
-            if not self.llm_is_vlm:
-                self.model = OllamaLLM(
-                    model=self.model_name,
-                    temperature=self.temperature,
-                )
+            # from langchain_ollama.llms import OllamaLLM
+            # if not self.llm_is_vlm:
+            #     self.model = OllamaLLM(
+            #         model=self.model_name,
+            #         temperature=self.temperature,
+            #     )
             if self.is_chat:
                 self.prompt_template = ChatPromptTemplate.from_messages(
                     [("system", self.prompt_system), ("user", "{content}")]
@@ -124,8 +127,32 @@ class LLM:
             self.prompt_template = PromptTemplate.from_template(self.prompt_system)
 
     def run(self, prompt: str):
-        if self.llm_is_vlm:
-            return self.vlm.use_as_a_llm(prompt)
+        if self.llm_is_vlm or self.provider == "Ollama":
+            full_prompt = self.prompt_system.replace("{content}", prompt)
+            start = time.time()
+            response = requests.post("http://localhost:11434/api/generate", json={
+                "model": self.model_name,
+                "prompt": full_prompt,
+                "keep_alive": 0,
+            }, stream=True)
+            output = ""
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line.decode("utf-8"))
+                            output += data.get("response", "")
+                        except json.JSONDecodeError:
+                            print("Could not decode:", line)
+                # print("Answer:", output.strip())
+            else:
+                print("Request failed with status", response.status_code)
+                print(response.text)
+            end = time.time()
+            print(f"LLM: {self.model_name} Inference time = {end - start}s")
+            # print(f"LLM Prompt = {full_prompt}")
+            # print(f"LLM Response = {output.strip()}")
+            return output.strip()
         else:
             chain = self.prompt_template | self.model | StrOutputParser()
             return chain.invoke({"content": prompt})
