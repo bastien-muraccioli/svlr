@@ -120,6 +120,8 @@ class SVLR:
 
         if not skip_action_generation:
             self.final_action, self.llm_output = self.controller.language_run(self.user_prompt, self.objects_found)
+        else:
+            self.controller.action_run(self.llm_output, self.objects_found)
     
         self.robot_controller.language_pipeline_has_run = True
         print("LLM processing done")

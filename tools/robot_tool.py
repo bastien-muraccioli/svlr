@@ -97,20 +97,22 @@ class RobotCamera:
     def camera_to_robot(self, camera_pose: list) -> list:
         robot_init_pose = self.robot_info["init_pose"]["pos_end_effector"]
         robot_pose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # [x, y, z, rx, ry, rz, rw]
-        T = np.array([
-            [ 0, -1,  0],  # X_new row
-            [ 1,  0,  0],  # Y_new row
-            [ 0,  0,  1]   # Z_new row
-        ])
+        
+        robot_rotation_matrix = np.array(self.robot_info.get("rot_mat", np.eye(3)))  # Default to identity if not provided
         old_coords = np.array([camera_pose[0], camera_pose[1], camera_pose[2]])  # [X, Y, Z] in old frame
-        camera_pose = T @ old_coords
+        camera_pose = robot_rotation_matrix @ old_coords
         # Convert the camera pose to robot pose
         # print(f"Camera pose: {camera_pose}, Robot last pose: {self.robot_last_pose}")
+        x_camera_pose = camera_pose[0]
+        x_robot_last_pose = self.robot_last_pose[0]
         robot_pose[0] = (
-            camera_pose[0] + self.robot_last_pose[0] + self.robot_info["eye_to_hand"]["dx"]
+            x_camera_pose + x_robot_last_pose + self.robot_info["eye_to_hand"]["dx"]
         )  # x
+        
+        y_camera_pose = camera_pose[1]
+        y_robot_last_pose = self.robot_last_pose[1]
         robot_pose[1] = (
-            -camera_pose[1] + self.robot_last_pose[1] + self.robot_info["eye_to_hand"]["dy"]
+            -y_camera_pose + y_robot_last_pose + self.robot_info["eye_to_hand"]["dy"]
         )  # y
         if self.depth_camera_flag:
             robot_pose[2] = (

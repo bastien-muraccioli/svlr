@@ -206,7 +206,7 @@ def main(args=None):
     pub_topic = "/actions_topic"
     sub_topic = "/end_of_actions"
 
-    node = RosPubSub(pub_topic, sub_topic)
+    node = RosRobotController(pub_topic, sub_topic)
 
     robot_info = {
         "init_pose": {"pos_end_effector": [0.5, 0.3, 0.2, 1.0, 0.0, 0.0, 0.0]},

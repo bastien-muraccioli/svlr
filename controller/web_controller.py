@@ -1,3 +1,5 @@
+import json
+
 import requests
 
 from controller.controller import RobotController
@@ -40,17 +42,36 @@ class WebRobotController(RobotController):
             r.raise_for_status()
             data = r.json()
             # Return None if the server has no pose yet
-            return data if data.get("pose") is not None else None
+            return data.get("pose")
         except requests.RequestException:
             return None
-
+        
     def send_actions(self, action) -> None:
         if action is None:
             return
         try:
-            payload = action if isinstance(action, dict) else {"action": str(action)}
+            # Handle list of actions - take the first one
+            if isinstance(action, list):
+                if len(action) == 0:
+                    return
+                payload = action[0]  # Extract the dict from the list
+            elif isinstance(action, dict):
+                payload = action
+            elif isinstance(action, str):
+                # Try to parse JSON string
+                try:
+                    payload = json.loads(action)
+                    if isinstance(payload, list) and len(payload) > 0:
+                        payload = payload[0]
+                except json.JSONDecodeError:
+                    print(f"Warning: Failed to parse action string as JSON: {action}")
+                    return
+            else:
+                print(f"Warning: Unexpected action type: {type(action)}")
+                return
+            
             requests.post(
                 f"{self.base_url}/send_action", json=payload, timeout=1.0
             )
-        except requests.RequestException:
-            pass
+        except requests.RequestException as e:
+            print(f"Failed to send action: {e}")
