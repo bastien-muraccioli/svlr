@@ -61,6 +61,8 @@ class Perception:
         self.session_reset_interval = 100  # reset every N frames to avoid memory leak
         self.local_frame_idx = {}  # key: entity_name -> local frame index
         self.edgetam_session = None
+        
+        self.lang_sam = LangSAM()
 
 
     def initialize_trackers(self):
@@ -354,8 +356,6 @@ class Perception:
 
     def segmentation(self):
         print(f"Run Image Segmentation model {self.seg_model_name}")
-        # Initialize model
-        model = LangSAM()
 
         # Convert PIL to RGB and keep original NumPy for processing
         image_pil = self.image.convert("RGB").copy()
@@ -368,7 +368,7 @@ class Perception:
         # Loop over each entity individually
         for entity in self.environment_description_list:
             with torch.cuda.amp.autocast(dtype=torch.float16):
-                result = model.predict([image_pil], [entity.name])[0]
+                result = self.lang_sam.predict([image_pil], [entity.name])[0]
 
             # Take only the highest‑confidence mask
             masks  = result["masks"]
@@ -434,15 +434,13 @@ class Perception:
          Returns True if successful, False otherwise.
         """
         print(f"Run Image Segmentation model {self.seg_model_name} for entity '{entity_name}'")
-        # Initialize model
-        model = LangSAM()
 
         # Convert PIL to RGB and keep original NumPy for processing
         image_pil = self.image.convert("RGB").copy()
         # image_np = np.array(image_pil)
 
         with torch.cuda.amp.autocast(dtype=torch.float16):
-            result = model.predict([image_pil], [entity_name])[0]
+            result = self.lang_sam.predict([image_pil], [entity_name])[0]
 
         # Take only the highest‑confidence mask
         masks  = result["masks"]
