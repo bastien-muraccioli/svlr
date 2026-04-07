@@ -149,27 +149,6 @@ class MockBackend(RobotBackend):
         self.action_duration = action_duration
         self._timer: threading.Timer | None = None
 
-        # Pose drift thread
-        # self._drift_thread = threading.Thread(
-        #     target=self._drift_loop, daemon=True
-        # )
-        # self._drift_thread.start()
-
-    # -- pose --
-
-    def _drift_loop(self):
-        t = 0.0
-        while True:
-            time.sleep(0.1)
-            t += 0.1
-            with self._lock:
-                self._pose = [
-                    round(math.sin(t * 0.3) * 2.0, 4),
-                    round(math.sin(t * 0.3) * 2.0, 4),
-                    round(math.sin(t * 0.3) * 2.0, 4),
-                    1.0, 0.0, 0.0, 0.0
-                    
-                ]
     def get_pose(self) -> list[float]:
         with self._lock:
             return self._pose
@@ -269,12 +248,6 @@ class RealRobotBackend(RobotBackend):
         "ee.z": 0.146185435044701,
         "ee.gripper_pos": 1.6178736517719567,
     }
-    # DEFAULT_INITIAL_EE = {
-    #     "ee.x": 0.2842,
-    #     "ee.y": 0.0768,
-    #     "ee.z": 0.1462,
-    #     "ee.gripper_pos": 1.6178736517719567,
-    # }
 
     def __init__(
         self,
@@ -560,7 +533,6 @@ class RealRobotBackend(RobotBackend):
             with self._lock:
                 # Check if we have a trajectory to execute
                 if self._trajectory_index < len(self._trajectory):
-                    print("EXECUTING TRAJECTORY: index", self._trajectory_index, "of", len(self._trajectory))
                     # Get current setpoint from trajectory
                     setpoint = self._trajectory[self._trajectory_index]
                     self._trajectory_index += 1
@@ -576,23 +548,18 @@ class RealRobotBackend(RobotBackend):
 
             if setpoint is not None:
                 ee_action = {**setpoint, **self.FIXED_ORIENTATION}
-                # Use the fresh observation from this iteration
                 
-                # for i in range(5):
-                    # joints = local_ik((ee_action, obs))
-                    # print("[CONTROL] Sending action", i, joints)
+                # Use the fresh observation from this iteration
                 joints = local_ik((ee_action, obs))
                 
-                # print("[CONTROL] Traj index", self._trajectory_index, len(self._trajectory))
-                # print("[CONTROL] Current obs", obs)
                 self._follower.send_action(joints)
+                
                 self._current_ee: dict[str, float] = {
                     "ee.x":          float(ee_meas["ee.x"]),
                     "ee.y":          float(ee_meas["ee.y"]),
                     "ee.z":          float(ee_meas["ee.z"]),
                     "ee.gripper_pos": float(ee_meas.get("ee.gripper_pos", 1.617)),
                 }
-                # input("Press Enter to continue...")
 
                 # Completion check against the final target
                 if target_for_hold is not None:
@@ -841,7 +808,7 @@ def parse_args():
         "--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)"
     )
     p.add_argument(
-        "--port", type=int, default=8000, help="Bind port (default: 8000)"
+        "--port", type=int, default=65500, help="Bind port (default: 65500)"
     )
     # Mock options
     p.add_argument(

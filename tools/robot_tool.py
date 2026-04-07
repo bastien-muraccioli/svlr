@@ -17,7 +17,7 @@ class RobotCamera:
             self.node = node  # ROS node will be set in main.py if using ROS
         else:
             self.node = None
-        # pose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # [x, y, z, rx, ry, rz, rw]
+
         data = {"camera_matrix": {"data": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}}
         yaml_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "calibration.yaml"
@@ -98,11 +98,12 @@ class RobotCamera:
         robot_init_pose = self.robot_info["init_pose"]["pos_end_effector"]
         robot_pose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # [x, y, z, rx, ry, rz, rw]
         
+        # Retrieve the rotation matrix from the robot info, or use identity if not provided
         robot_rotation_matrix = np.array(self.robot_info.get("rot_mat", np.eye(3)))  # Default to identity if not provided
         old_coords = np.array([camera_pose[0], camera_pose[1], camera_pose[2]])  # [X, Y, Z] in old frame
         camera_pose = robot_rotation_matrix @ old_coords
+        
         # Convert the camera pose to robot pose
-        # print(f"Camera pose: {camera_pose}, Robot last pose: {self.robot_last_pose}")
         x_camera_pose = camera_pose[0]
         x_robot_last_pose = self.robot_last_pose[0]
         robot_pose[0] = (
@@ -120,6 +121,7 @@ class RobotCamera:
                 )  # z
         else:
             robot_pose[2] = - camera_pose[2] + self.robot_last_pose[2]  # z
+            
         # For the moment we fix the Z manually (no depth with camera), so we keep the same Z
         # robot_pose[2] = camera_pose[2] + self.robot_info["eye_to_hand"]["dz"]  # z
 
@@ -150,6 +152,5 @@ class RobotCamera:
             print("No ROS node available, using camera model for 3D point computation.")
             camera_pose = self.pixel_to_camera_coordinates(pixel_pose)
 
-        # print(f"Camera coordinates: {camera_pose}")
         robot_pose = self.camera_to_robot(camera_pose)
         return robot_pose

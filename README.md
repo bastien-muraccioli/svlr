@@ -1,481 +1,289 @@
-# SVLR: Scalable Visual Language Robotics
-
-**A modular multi-model framework for consumer-grade GPUs**
+# SVLR: Scalable, Training-Free Visual Language Robotics: a modular multi-model framework for consumer-grade GPUs
 
 [![arXiv](https://img.shields.io/badge/arXiv--df2a2a.svg?style=for-the-badge)](https://arxiv.org/abs/2502.01071)
 [![Python](https://img.shields.io/badge/python-3.10-blue?style=for-the-badge)](https://www.python.org)
 [![License](https://img.shields.io/github/license/TRI-ML/prismatic-vlms?style=for-the-badge)](LICENSE)
 
-[**Installation**](#installation) | [**Getting Started**](#getting-started) | [**Adding Robots & Actions**](#how-to-add-a-new-robot-and-new-actions) | [**Adding AI Models**](#how-to-add-new-ai-models) | [**Project Website**](https://scalable-visual-language-robotics.github.io/) | [**Citation**](#citation)
+[**Installation**](#installation) | [**Getting Started**](#getting-started) | [**How to add a new robot and new actions**](#how-to-add-a-new-robot-and-new-actions) | [**How to add new AI models**](#how-to-add-new-ai-models) | [**Project Website**](https://scalable-visual-language-robotics.github.io/) | [**Citation**](#citation)
 
----
+
+<hr style="border: 2px solid gray;"></hr>
 
 ## Latest Updates
-- **2024-09-01** - Initial release
-- **2026-04-07** - Support for SO-ARM100
+- [2024-09-01] Initial release
 
----
+<hr style="border: 2px solid gray;"></hr>
 
-## Overview
+## **Scalable Visual Language Robotics (SVLR) Framework**
 
-SVLR is a scalable, training-free framework for controlling robots using visual and language inputs. It leverages a modular multi-model approach combining:
+A modular framework for controlling robots using visual and language inputs, based on multi-model approach.
 
-- **Visual Language Model (VLM)** - For scene understanding
-- **Zero-shot Image Segmentation** - For object detection
-- **Large Language Model (LLM)** - For instruction interpretation
-- **Sentence Similarity Model** - For semantic matching
-
-This architecture enables intuitive robot control through natural language commands and visual perception without requiring custom training.
-
----
+Utilizes a Visual Language Model (VLM), zero-shot image segmentation, a Large Language Model (LLM), and a sentence similarity model to process images and instructions.
 
 ## Installation
+```bash
+# Install PyTorch. Below is a sample command to do this, but you should check the following link
+# to find installation instructions that are specific to your compute platform:
+# https://pytorch.org/get-started/locally/
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
-### Prerequisites
-- Python 3.10 or 3.12.3
-- [Ollama](https://ollama.com/) installed on your system
-- CUDA-compatible GPU (recommended)
+# Clone and install the slvr repo
+git clone https://github.com/bastien-muraccioli/svlr.git
+cd svlr
+pip install -r requirements.txt
+```
 
-### Setup
+**Notes:**
+- SVLR is compatible with both `venv` and `conda` virtual environments.
+- The project has been tested on Python **3.10** and now also on **3.12.3**.
+- This repository requires **[Ollama](https://ollama.com/)** to be installed.
+- Make sure to have the `llava-phi3` model downloaded via Ollama:
+  ```bash
+  ollama run llava-phi3
+  ```
 
-1. **Install PyTorch**
-   ```bash
-   # Check https://pytorch.org/get-started/locally/ for platform-specific instructions
-   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-   ```
-
-2. **Clone and install SVLR**
-   ```bash
-   git clone https://github.com/bastien-muraccioli/svlr.git
-   cd svlr
-   pip install -r requirements.txt
-   ```
-
-3. **Download the VLM model**
-   ```bash
-   ollama run llava-phi3
-   ```
-
-**Note:** SVLR is compatible with both `venv` and `conda` virtual environments.
-
----
 
 ## Getting Started
 
-### Simulation Mode
+### Running SVLR in simulation
+This mode was initially made for debug purposes, but can be used to test the framework without a robot.
 
-Test the framework without a physical robot:
+At the end you will see the image with the detected objects and the predicted actions.
+``` bash
+# It will run the SVLR framework with test.png in the pictures folder
+python main.py --show_image --simulation
 
-```bash
-# Run with default test image
-python main.py --simulation
-
-# Run with custom image (place in pictures/ folder)
-python main.py --simulation --simulation_image_file your_image.png
+# You can also specify a custom image, put your image in the pictures folder and run:
+python main.py --show_image --simulation --simulation_image_file your_image.png
 ```
 
-The output displays detected objects and predicted actions overlaid on the image.
+### Running SVLR with the UR10 robot
 
----
+This mode will allow you to control the UR10 robot with the SVLR framework.
 
-### Running with UR10 Robot
+#### Requirements
 
-Control a UR10 robot arm with SVLR.
+- [ROS Noetic](http://wiki.ros.org/noetic/Installation) with the [UR10 controller](https://github.com/ThomasDuvinage/ur_robotiq_controller), custom controller can be used, as it can receive data from the SVLR framework.
+- UR10 Robot + camera + gripper (Robotiq 2F-140) (However, SVLR is adaptable to any robot with any gripper and camera, but you will need to create a custom controller)
+- Have a calibrated camera : If you have a USB camera you can use the ROS package [logicool](https://github.com/bastien-muraccioli/logicool) and follow the instructions to calibrate the camera. At the end, you will need to save the calibration matrix usb_cam.yaml into the svlr root folder and rename it to calibration.yaml.
+- In slvr/actions/UR10_action.json, you need to specify:
+  - the init_pose in the end effector coordinates
+  - the eye_to_hand: dx and dy that are the offsets between the camera and the end effector.
+  - the eye_to_hand: depth that is the distance between the camera and your setup during the init pose, if you are using a table, it's the distance between the camera and the table.
+- In slvr/actions/UR10_pick_place.py, you need to specify the zmin where your robot can reach the objects on the table.
 
-#### Prerequisites
-
-**Hardware:**
-- UR10 robot arm
-- USB camera
-- Robotiq 2F-140 gripper (or compatible)
-
-**Software:**
-- [ROS Noetic](http://wiki.ros.org/noetic/Installation)
-- [UR10 controller](https://github.com/ThomasDuvinage/ur_robotiq_controller) (or custom controller)
-
-#### Setup
-
-1. **Camera Calibration**
-   - Install the ROS [logicool](https://github.com/bastien-muraccioli/logicool) package
-   - Follow calibration instructions
-   - Save calibration matrix as `usb_cam.yaml`
-   - Copy to SVLR root and rename to `calibration.yaml`
-
-2. **Configure Robot Parameters** (`svlr/actions/UR10_action.json`)
-   - **`init_pose`**: Initial end-effector coordinates
-   - **`eye_to_hand.dx/dy`**: Camera-to-end-effector offsets (meters)
-   - **`eye_to_hand.depth`**: Camera-to-workspace distance at init pose
-
-3. **Set Workspace Limits** (`svlr/actions/UR10_pick_place.py`)
-   - Define **`zmin`**: Minimum reachable z-coordinate on table
-
-#### Running
-
-```bash
-python main.py
+#### How to run
+``` bash
+# --show_image will display the image of the camera but the argument is optional
+python main.py --show_image
 ```
 
-**Note:** SVLR is adaptable to other robot arms, grippers, and cameras with custom controllers.
+### Running SVLR with the SO-ARM100 robot
 
----
+This mode will allow you to control the [SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) robot with the SVLR framework.
 
-### Running with SO-ARM100 Robot
+#### Requirements
 
-Control the [SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) robot using a client-server architecture.
+- [LeRobot](https://github.com/huggingface/lerobot) (v0.5.1), used to control SO-ARM100.
+- SO-ARM100 Robot + camera
+- Have a calibrated camera : If you have a USB camera you can use the ROS package [logicool](https://github.com/bastien-muraccioli/logicool) and follow the instructions to calibrate the camera. At the end, you will need to save the calibration matrix usb_cam.yaml into the svlr root folder and rename it to calibration.yaml.
+- In slvr/actions/SO100_action.json, you need to specify:
+  - the init_pose in the end effector coordinates
+  - the eye_to_hand: dx and dy that are the offsets between the camera and the end effector.
+  - the eye_to_hand: depth that is the distance between the camera and your setup during the init pose, if you are using a table, it's the distance between the camera and the table.
+  - the rot_mat is the rotation matrix between the camera and the robot frame
+- In slvr/actions/SO100_pick_place.py, you need to specify the zmin where your robot can reach the objects on the table.
 
-#### Prerequisites
+#### How to run
 
-**Hardware:**
-- SO-ARM100 robot arm
-- USB camera
-- Raspberry Pi (optional, for remote control)
+Current implementation relies on server & client architecture as the SO-ARM100 run on a distant RaspberryPi instead of being directly connected to where SVLR is running.
+To help with this setup, we provide an implementation of the web server that runs on the RaspberryPi
 
-**Software:**
-- [LeRobot](https://github.com/huggingface/lerobot) v0.5.1+
-- Python 3.x
+##### Server
 
-#### Setup
+First copy the `lerobot_webserver.py` to the RaspberryPi then run it
 
-##### 1. Camera Calibration
+The script expect the URDF file for the SO-ARM100. The files can be downloaded at https://github.com/TheRobotStudio/SO-ARM100/ (you need to download the whole project). Extract it point the script to the `so101_new_calib.urdf` file using `--urdf` flag.
 
-1. Install the ROS [logicool](https://github.com/bastien-muraccioli/logicool) package
-2. Follow calibration instructions
-3. Save as `usb_cam.yaml` → copy to SVLR root → rename to `calibration.yaml`
-
-##### 2. Configuration Files
-
-**Action Configuration** (`svlr/actions/SO100_action.json`):
-- **`init_pose`**: Initial end-effector coordinates
-- **`eye_to_hand.dx/dy`**: Camera-to-end-effector offsets (meters)
-- **`eye_to_hand.depth`**: Camera-to-workspace distance at init pose
-- **`rot_mat`**: Rotation matrix (camera frame → robot frame)
-
-**Pick-and-Place Configuration** (`svlr/actions/SO100_pick_place.py`):
-- **`zmin`**: Minimum reachable z-coordinate on table
-
-#### Running the System
-
-##### Server Setup (Raspberry Pi or control machine)
-
-1. **Download SO-ARM100 URDF files**
-   ```bash
-   git clone https://github.com/TheRobotStudio/SO-ARM100.git
-   ```
-
-2. **Transfer server script**
-   ```bash
-   scp lerobot_webserver.py pi@<raspberry-pi-ip>:~/
-   ```
-
-3. **Start server**
-   ```bash
-   python lerobot_webserver.py \
-     --mode real \
-     --urdf /path/to/SO-ARM100/Simulation/SO101/so101_new_calib.urdf
-   ```
-
-**Server Options:**
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--mode {mock,real}` | Backend mode | `mock` |
-| `--host HOST` | Server bind address | `0.0.0.0` |
-| `--port PORT` | Server port | `8000` |
-| `--action-duration SECONDS` | [mock] Auto-completion delay | `2.0` |
-| `--port-id SERIAL_PATH` | [real] Serial port path | - |
-| `--urdf URDF_PATH` | [real] SO-101 URDF file path | - |
-| `--robot-id ROBOT_ID` | [real] Robot identifier | `so100_follower` |
-| `--lerp-speed M_PER_S` | [real] End-effector travel speed | `0.1` |
-
-**Example with custom settings:**
-```bash
-python lerobot_webserver.py \
-  --mode real \
-  --host 0.0.0.0 \
-  --port 8000 \
-  --urdf ~/SO-ARM100/Simulation/SO101/so101_new_calib.urdf \
-  --lerp-speed 0.15
+``` bash
+rpi$ python lerobot_webserver.py --mode real --urdf /path/to/SO-ARM100/Simulation/SO101/so101_new_calib.urdf
 ```
 
-##### Client Setup (SVLR)
-
-```bash
-python main.py --robot_name SO100 --http_server <raspberry-pi-ip>
+Find below usage:
 ```
+usage: lerobot_webserver.py [-h] [--mode {mock,real}] [--host HOST] [--port PORT] [--action-duration SECONDS]
+                     [--port-id SERIAL_PATH] [--urdf URDF_PATH] [--robot-id ROBOT_ID]
+                     [--lerp-speed M_PER_S]
 
-**Example:**
-```bash
-python main.py --robot_name SO100 --http_server 192.168.1.100
+Robot web server
+
+options:
+  -h, --help            show this help message and exit
+  --mode {mock,real}    Backend mode (default: mock)
+  --host HOST           Bind host (default: 0.0.0.0)
+  --port PORT           Bind port (default: 65500)
+  --action-duration SECONDS
+                        [mock] seconds before action auto-completes (default: 2.0)
+  --port-id SERIAL_PATH
+                        [real] serial port, e.g. /dev/serial/by-id/usb-...
+  --urdf URDF_PATH      [real] path to the SO-101 URDF file
+  --robot-id ROBOT_ID   [real] robot ID string (default: so100_follower)
+  --lerp-speed M_PER_S  [real] EE travel speed for lerp in m/s — frame count is derived from distance /
+                        speed (default: 0.1 m/s)
 ```
+##### Client
 
----
+The "client" is SVLR. To connect the client to the server use the --http_server option
 
-## Command-Line Arguments
+``` bash
+python main.py --robot_name SO100 --http_server X.Y.Z.W
+```
+where `X.Y.Z.W` is the IP address of the RaspberryPi
 
-Configure SVLR behavior using the following arguments:
+## Arguments
+Below is a list of arguments you can use when running `main.py` to control the robot:
 
-### Robot & Server
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--robot_name` | `str` | `"UR10"` | Robot name |
-| `--server` | `str` | `'127.0.0.1'` | Robot server IP address |
-| `--port` | `int` | `65500` | Robot server port |
-| `--buffer` | `int` | `1024` | Server buffer size |
-| `--http_server` | `str` | - | HTTP server IP (for SO-ARM100) |
+- **Robot and Server Information:**
+  - `--robot_name` (`str`, default: `"UR10"`): Specifies the name of the robot.
+  - `--server` (`str`, default: `'127.0.0.1'`): Sets the robot server's IP address.
+  - `--port` (`int`, default: `65500`): Defines the port number for the robot server.
+  - `--buffer` (`int`, default: `1024`): Determines the buffer size for the server.
 
-### Camera
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--camera_topic` | `str` | `""` | ROS camera image topic |
-| `--camera_device` | `str` | `'/dev/video2'` | Camera device path |
-| `--camera_width` | `int` | `640` | Camera feed width |
-| `--camera_height` | `int` | `480` | Camera feed height |
+- **Camera Settings:**
+  - `--camera_topic` (`str`, default: `""`): Set camera image topic
+  - `--camera_device` (`str`, default: `'/dev/video2'`): Specifies the camera device path.
+  - `--camera_width` (`int`, default: `640`): Sets the width of the camera feed.
+  - `--camera_height` (`int`, default: `480`): Sets the height of the camera feed.
 
-### Large Language Model (LLM)
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--llm_name` | `str` | `'microsoft/Phi-3-mini-4k-instruct'` | LLM model name |
-| `--llm_provider` | `str` | `'HuggingFace'` | Provider (`HuggingFace` or `OpenAI`) |
-| `--llm_temperature` | `float` | `0.1` | Sampling temperature (0.1-1.0) |
-| `--llm_is_chat` | flag | - | Use chat model variant |
+- **Large Language Model (LLM) Configuration:**
+  - `--llm_name` (`str`, default: `'microsoft/Phi-3-mini-4k-instruct'`): Name of the LLM to be used.
+  - `--llm_provider` (`str`, default: `'HuggingFace'`): LLM provider (`HuggingFace` or `OpenAI`).
+  - `--llm_temperature` (`float`, default: `0.1`): Sets the LLM temperature (value between 0.1 and 1.0).
+  - `--llm_is_chat` (flag): Indicates if the LLM is a chat model.
 
-### Simulation & Debug
-| Argument | Type | Default | Description |
-|----------|------|---------|-------------|
-| `--simulation` | flag | - | Run in simulation mode |
-| `--simulation_image_file` | `str` | `'test.png'` | Image file for simulation |
-| `--show_image` | flag | - | Display captured image |
-| `--save_image` | flag | - | Save captured image |
+- **Simulation Mode:**
+  - `--simulation` (flag): Runs the robot in simulation mode.
+  - `--simulation_image_file` (`str`, default: `'test.png'`): Specifies the image file to use in simulation mode.
 
----
+- **Image Handling:**
+  - `--show_image` (flag): Displays the captured image.
+  - `--save_image` (flag): Saves the captured image.
 
 ## Repository Structure
 
-```
-svlr/
-├── actions/              # Robot definitions and action programs
-├── pictures/             # Camera images and visualizations
-├── similarity_model/     # all-MiniLM-L6-v2 sentence similarity
-├── src/                  # Core SVLR framework code
-├── tools/                # Utility scripts
-├── calibration.yaml      # Camera calibration matrix
-├── control_loop.py       # Main control loop
-├── llm_prompt.json       # LLM system prompt templates
-├── main.py               # Entry point
-├── requirements.txt      # Python dependencies
-├── LICENSE               # MIT License
-└── README.md             # Documentation
-```
+High-level overview of repository/project file-tree:
+
++ `actions/` - JSON files describing the robots and their associated actions programs files.
++ `pictures/` - camera images, generated plot and segmentation predictions.
++ `similarity_model/` - all-MiniLM-L6-v2 files for sentence similarity.
++ `src/` - main source code for the SVLR framework.
++ `tools/` - tools for the SVLR framework.
++ `calibration.yaml` - camera calibration matrix.
++ `control_loop.py` - main control loop for the SVLR framework.
++ `llm_prompt.json` - JSON file with the LLM prompt sytem templates.
++ `main.py` - main file to run the SVLR framework.
++ `requirements.txt` - Python dependencies.
++ `LICENSE` - All code is made available under the MIT License.
++ `README.md` - You are here!
 
 ---
 
-## How to Add a New Robot and New Actions
+## How to add a new robot and new actions
+In this section, we will explain how to add a new robot and new actions to the SVLR framework.
 
-### Adding a New Robot
+### Add a new robot
+1. Create a new JSON file in the `actions/` folder, named {robot_name}_action.json.
+2. Add the robot description in the JSON file, following the existing format.
+``` json
+{
+    "robot_name": "robot's name",
+    "description": "robot's description",
+    "init_pose": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "eye_to_hand": {
+        "dx": 0.0,
+        "dy": 0.0,
+        "depth": 0.0
+    },
+}
+```
+3. You can also add more components that can be used in the actions. For example, we had the open and close gripper values in the UR10_action.json file like this:
+``` json
+{
+  "gripper": {
+     "open": 30,
+     "close": 220
+   },
+}
+```
+4. Your robotic controller will need to receive the actions generated by the SVLR framework. The SVLR framework sends a list of what your actions return. Whatever, we recommend you to return a list of dict with the robot control information. It the case of the UR10, we return the end effector position and the gripper value as the following:
+``` python
+[
+  {
+    "end_effector": [x, y, z, rx, ry, rz],
+    "gripper": gripper_value
+  },
+]
+```
+These information are sent to the robot controller by socket, you will need to specify the address and the port of your controller with the --server and --port arguments when running the main.py file.
 
-1. **Create robot definition** - `actions/{robot_name}_action.json`
+### Add new actions
+To add a new action to the SVLR framework, you need to modify the robot_action.json file and create a new Python file in the `actions/` folder.
 
-   ```json
-   {
-     "robot_name": "MyRobot",
-     "description": "Description of the robot",
-     "init_pose": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-     "eye_to_hand": {
-       "dx": 0.0,
-       "dy": 0.0,
-       "depth": 0.0
-     }
-   }
-   ```
+It's important to notice that the action described in the json file will be used by the LLM to fulfill the user's request, more the description is clear, more the LLM will be able to understand what your action is doing.
 
-2. **Add robot-specific components** (optional)
+Also, in the current implementation of SVLR, the parameters can only be the objects detected in the image. The LLM will generate the action with the detected objects names in the image, but your action program will receive the position of these objects, in the end effector coordinates, to execute the action.
+We recommend you to explore the UR10 files to understand this process.
 
-   Example - gripper configuration:
-   ```json
-   {
-     "gripper": {
-       "open": 30,
-       "close": 220
-     }
-   }
-   ```
+1. In your robot_action.json file, add the new actions with the following format:
+``` json
+{
+    "actions":
+  [
+    {
+    "name": "action_name",
+    "program": "{robot_name}_{program_name}",
+    "description": "action description",
+    "parameters": [{
+      "type": "type",
+      "description": "[parameter description]",
+      "required": true
+      }]
+    },
+  ]
+}
+```
+2. Create a new Python file in the `actions/` folder, named {robot_name}_{program_name}.py. This file will contain the program for the action. You only need to return a list with the content that required your controller (e.g. With the UR10, we need to return a list of dict with the positions of the end effector and gripper values). The list is needed to let the framework execute multiple actions in a row.
 
-3. **Implement robot controller**
+## How to add new AI models
+By default, the SVLR framework uses the following models from HuggingFace:
+- VLM: llava-phi3
+- LLM: microsoft/Phi-3-mini-4k-instruct
+- Sentence Similarity: all-MiniLM-L6-v2
+- Zero-Shot Image Segmentation: CIDAS/clipseg-rd64-refined
 
-   Your controller should receive actions from SVLR via socket. We recommend returning a list of dictionaries with control information:
+<!-- ### Add a new VLM
+As the lightweights open-source VLM are recent, it can be a bit tricky to add a new one. However, as it concerns the SVLR framework, you will only need to update the src/vlm.py file to use the new model. -->
 
-   ```python
-   [
-     {
-       "end_effector": [x, y, z, rx, ry, rz],
-       "gripper": gripper_value
-     }
-   ]
-   ```
+### Add a new LLM
+To add a new LLM, you need to specify its system prompt in the llm_prompt.json file, otherwise it will use the default prompt, that is not recommended.
 
-   Configure the controller address using `--server` and `--port` arguments.
+Then you will need to specify its name and its provider (HuggingFace or OpenAI) with the --llm_name and --llm_provider arguments when running the main.py file. If you want to use a chat model, you will need to specify the --llm_is_chat argument.
 
-### Adding New Actions
-
-Actions enable the LLM to fulfill user requests. Clear descriptions improve LLM understanding.
-
-**Current limitation:** Action parameters must be objects detected in the image. The LLM generates actions using object names, but your program receives object positions in end-effector coordinates.
-
-**Recommended:** Study the UR10 implementation files to understand this workflow.
-
-#### Steps
-
-1. **Define action** in `actions/{robot_name}_action.json`
-
-   ```json
-   {
-     "actions": [
-       {
-         "name": "pick_and_place",
-         "program": "{robot_name}_pick_place",
-         "description": "Pick up an object and place it at a target location",
-         "parameters": [
-           {
-             "type": "object",
-             "description": "Object to pick up",
-             "required": true
-           },
-           {
-             "type": "object",
-             "description": "Target placement location",
-             "required": true
-           }
-         ]
-       }
-     ]
-   }
-   ```
-
-2. **Implement action program** - `actions/{robot_name}_{program_name}.py`
-
-   Return a list of control dictionaries compatible with your robot controller. The list structure allows executing multiple sequential actions.
-
----
-
-## How to Add New AI Models
-
-### Default Models
-
-SVLR uses the following models from HuggingFace by default:
-
-- **VLM:** `llava-phi3`
-- **LLM:** `microsoft/Phi-3-mini-4k-instruct`
-- **Sentence Similarity:** `all-MiniLM-L6-v2`
-- **Zero-Shot Segmentation:** `CIDAS/clipseg-rd64-refined`
-
-### Adding a New LLM
-
-1. **Define system prompt** in `llm_prompt.json`
-   
-   ```json
-   {
-     "model_name": {
-       "system": "Your custom system prompt here"
-     }
-   }
-   ```
-
-2. **Run with custom LLM**
-
-   ```bash
-   python main.py --llm_name "your-model-name" --llm_provider "HuggingFace"
-   ```
-
-   For chat models, add `--llm_is_chat` flag.
-
-#### OpenAI Models
-
-Create `.env` in the project root:
-
-```bash
+As it concerns the OpenAI models, you can create a .env file in the root folder with the following content:
+``` bash
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-Run with:
-```bash
-python main.py --llm_name "gpt-4" --llm_provider "OpenAI"
-```
+If you want to add other LLM providers such as Ollama, you will need to modify the src/llm.py file and install the necessary dependencies.
 
-#### Other Providers (e.g., Ollama)
+By default, the LLM from HuggingFace are run with a 4bit quantization, if you want to use the full precision, you will need to modify the src/llm.py file.
 
-Modify `src/llm.py` and install necessary dependencies.
+### Add a new Sentence Similarity model
+In src/action.py, you will need to replace the model_path variable by the name of the new model.
 
-#### Quantization
+### Add a new Zero-Shot Image Segmentation model
+In src/perception.py, you will need to replace the seg_model_name variable by the name of the new model.
 
-By default, HuggingFace LLMs use 4-bit quantization. For full precision, modify `src/llm.py`.
-
-### Adding a New Sentence Similarity Model
-
-In `src/action.py`, update the `model_path` variable:
-
-```python
-model_path = "sentence-transformers/your-model-name"
-```
-
-### Adding a New Zero-Shot Segmentation Model
-
-In `src/perception.py`, update the `seg_model_name` variable:
-
-```python
-seg_model_name = "your-segmentation-model"
-```
-
----
-
-## License
-
-All code is made available under the [MIT License](LICENSE).
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-**Camera calibration errors:**
-- Verify `calibration.yaml` is in the SVLR root directory
-- Re-run calibration if matrix appears incorrect
-
-**Connection issues (SO-ARM100):**
-- Ensure client and server are on the same network
-- Verify Raspberry Pi IP address is correct
-- Check server is running with `--mode real`
-
-**Robot unreachable positions:**
-- Adjust `zmin` in `{robot_name}_pick_place.py`
-- Verify `init_pose` is within robot workspace
-
-**Model loading failures:**
-- Ensure Ollama is running: `ollama serve`
-- Verify model is downloaded: `ollama list`
-- Check GPU memory availability
-
-**LLM errors:**
-- Verify model name matches exactly
-- Check `.env` file for OpenAI API key
-- Ensure system prompt exists in `llm_prompt.json`
-
----
-
-## Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request with clear description
-
----
-
-## Support
-
-- **Issues:** [GitHub Issues](https://github.com/bastien-muraccioli/svlr/issues)
-- **Website:** [scalable-visual-language-robotics.github.io](https://scalable-visual-language-robotics.github.io/)
-- **Paper:** [arXiv:2502.01071](https://arxiv.org/abs/2502.01071)
 
 ## Citation
 If you find our work useful, please consider citing us!
