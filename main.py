@@ -19,6 +19,79 @@ from tools.read_json import read_robot_json
 from transformers import logging
 logging.set_verbosity_error()
 
+import requests
+ 
+ 
+class WebRobotNode:
+    """
+    HTTP client that mirrors the ROS2 node interface.
+    All node.* calls in the original ros_controller are replaced
+    by HTTP requests to the robot web server.
+    """
+ 
+    def __init__(self, base_url: str = "http://localhost:8000"):
+        self.base_url = base_url.rstrip("/")
+        self._end_action = False
+ 
+    # ------------------------------------------------------------------
+    # Mirrored node interface
+    # ------------------------------------------------------------------
+ 
+    def end_action_received(self) -> bool:
+        try:
+            r = requests.get(f"{self.base_url}/end_action", timeout=1.0)
+            r.raise_for_status()
+            return r.json().get("end_action", False)
+        except requests.RequestException:
+            return False
+ 
+    def reset_end_action(self) -> None:
+        try:
+            requests.post(f"{self.base_url}/reset_end_action", timeout=1.0)
+        except requests.RequestException:
+            pass
+ 
+    def get_robot_pose(self, timeout_sec: float = 0.1):
+        try:
+            r = requests.get(
+                f"{self.base_url}/robot_pose", timeout=max(timeout_sec, 0.2)
+            )
+            r.raise_for_status()
+            data = r.json()
+            # Return None if the server has no pose yet
+            return data if data.get("pose") is not None else None
+        except requests.RequestException:
+            return None
+ 
+    def send_actions(self, action) -> None:
+        if action is None:
+            return
+        try:
+            # Handle list of actions - take the first one
+            if isinstance(action, list):
+                if len(action) == 0:
+                    return
+                payload = action[0]  # Extract the dict from the list
+            elif isinstance(action, dict):
+                payload = action
+            elif isinstance(action, str):
+                # Try to parse JSON string
+                try:
+                    payload = json.loads(action)
+                    if isinstance(payload, list) and len(payload) > 0:
+                        payload = payload[0]
+                except json.JSONDecodeError:
+                    print(f"Warning: Failed to parse action string as JSON: {action}")
+                    return
+            else:
+                print(f"Warning: Unexpected action type: {type(action)}")
+                return
+            
+            requests.post(
+                f"{self.base_url}/send_action", json=payload, timeout=1.0
+            )
+        except requests.RequestException as e:
+            print(f"Failed to send action: {e}")
 
 class SVLR:
     """Scalable Visual Language Robotics (SVLR) Interface"""
@@ -60,10 +133,14 @@ class SVLR:
             self.simulation_mode = True
         elif self.args.ros_publisher and self.args.ros_subscriber:
             self.ros_controller_mode = True
+        elif self.args.http_server is not None:
+            self.web_controller_mode = True
+            self.web_node = WebRobotNode(base_url=f"http://{self.args.http_server}:{self.args.port}")
         else:
             print("""
             Please provide either:
             --simulation to run in simulation mode, or
+            --server to run in web server mode, or
             --ros_publisher and --ros_subscriber to run with ROS2.
             """)
             return
@@ -170,13 +247,13 @@ class SVLR:
             )
             self.camera_frame = cv2.imread(simulation_image_path)
 
-        elif self.args.use_camera_without_ros or (self.simulation_mode and self.args.use_camera_in_simulation):
+        elif self.args.use_camera_without_ros or (self.simulation_mode and self.args.use_camera_in_simulation) or self.web_controller_mode:
             cap = cv2.VideoCapture(self.camera_device)
 
         while True:
             if self.args.camera_topic and self.ros_controller_mode and not self.args.use_camera_without_ros:
                 self.camera_frame = self.node.get_camera_image_ros()
-            elif self.args.use_camera_without_ros or (self.simulation_mode and self.args.use_camera_in_simulation):
+            elif self.args.use_camera_without_ros or (self.simulation_mode and self.args.use_camera_in_simulation) or self.web_controller_mode:
                 ret, self.camera_frame  = cap.read()
                 if not ret:
                     break
@@ -389,6 +466,90 @@ class SVLR:
             self.node.destroy_node()
             rclpy.shutdown()
 
+    def web_controller(self):
+        try:
+            while True:
+                time.sleep(self.time_step)
+
+                if self.user_prompt == "stop":
+                    return
+
+                if not self.language_pipeline_has_run:
+                    continue
+
+                # Initialize action sending if we received end of action and the robot is idle
+                if self.end_action_received and self.robot_is_idle:
+                    print("Web controller ready to synchronize and send actions")
+                    self.robot_is_idle = False
+                    self.action_size, self.action_counter = self.controller.action_counter()
+                    print(f"Action size: {self.action_size}, Action counter: {self.action_counter+1}")
+                    self.web_node.reset_end_action()
+                    self.end_action_received = False
+
+                # Poll end-of-action from the web server
+                if not self.robot_searching_for_entity and not self.end_action_received:
+                    if self.web_node.end_action_received():
+                        print("End of action received from web server")
+                        self.end_action_received = True
+                        self.web_node.reset_end_action()
+                        self.action_size, self.action_counter = self.controller.action_counter()
+                        print(f"Action size: {self.action_size}, Action counter: {self.action_counter+1}")
+                        all_steps_successful = self.controller.action_step_success()
+                        print("Ready for next action")
+                        if all_steps_successful:
+                            print("All actions are done")
+                            self.controller.perception.reset_all_session()
+                            self.language_pipeline_has_run = False
+                            self.robot_is_idle = True
+                            self.end_action_received = True
+                            self.perception_pipeline_has_run = False
+                            continue
+
+                # Update robot pose if not idle
+                if not self.robot_is_idle:
+                    robot_pose = self.web_node.get_robot_pose(timeout_sec=0.1)
+                    if robot_pose:
+                        self.controller.set_robot_pose(robot_pose['pose'])
+
+                if not self.robot_searching_for_entity:
+                    action_is_tracked, self.objects_found = self.controller.action_tracking(self.objects_found)
+                    for entity in self.objects_found:
+                        if entity.need_to_be_tracked and not entity.tracked:
+                            print(f"Entity {entity.name} needs to be tracked but is not, trying to find it again...")
+                            self.entity_to_find = entity
+                            self.counter_try_to_find_entity = 0
+                            self.robot_searching_for_entity = True
+                            self.web_node.reset_end_action()
+                            self.end_action_received = True
+                            self.controller.action.robot_action_class.current_action_step -= 1
+                            break
+                    if not self.robot_searching_for_entity:
+                        self.final_action = self.controller.get_current_action()
+                        self.end_action_received = False
+                else:
+                    self.web_node.reset_end_action()
+                    self.end_action_received = True
+                    if self.counter_try_to_find_entity < self.max_try_to_find_entity:
+                        print(f"Trying to find entity {self.entity_to_find.name} ({self.counter_try_to_find_entity+1}/{self.max_try_to_find_entity})...")
+                        entity_found = self.controller.perception.segment_one_entity(self.entity_to_find.name)
+                        if entity_found:
+                            self.objects_found = self.controller.perception.environment_description_list
+                            print(f"Entity {self.entity_to_find.name} found again.")
+                            self.robot_searching_for_entity = False
+                            self.entity_to_find = None
+                            self.counter_try_to_find_entity = 0
+                        else:
+                            self.counter_try_to_find_entity += 1
+
+                self.action_size, self.action_counter = self.controller.action_counter()
+                self.action_progress = f"Sending action {self.action_counter + 1}/{self.action_size}:\n {self.controller.get_readable_current_low_level_action()}"
+                self.web_node.send_actions(self.final_action)
+
+        except KeyboardInterrupt:
+            print("Keyboard interrupt detected. Shutting down.")
+        finally:
+            print("Web controller shut down.")
+
     def run(self):
         print("Starting SVLR...")
         if self.simulation_mode:
@@ -397,8 +558,10 @@ class SVLR:
         elif self.ros_controller_mode:
             print("Running in ROS2 controller mode")
             self.ros_controller()
+        elif self.web_controller_mode:
+            self.web_controller()
         else:
-            print("Please provide either --simulation or --ros_publisher and --ros_subscriber arguments")
+            print("Please provide either --simulation or --server or --ros_publisher and --ros_subscriber arguments")
             return
 
 def parser_args():
@@ -489,6 +652,10 @@ def parser_args():
         default="test.png",
         help="Simulation image file",
     )
+    parser.add_argument(
+        "--http_server", type=str, default=None, help="Robot server address"
+    )
+    parser.add_argument("--port", type=int, default=65500, help="Robot server port")
 
     return parser.parse_args()
 

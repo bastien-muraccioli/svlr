@@ -97,7 +97,15 @@ class RobotCamera:
     def camera_to_robot(self, camera_pose: list) -> list:
         robot_init_pose = self.robot_info["init_pose"]["pos_end_effector"]
         robot_pose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # [x, y, z, rx, ry, rz, rw]
+        T = np.array([
+            [ 0, -1,  0],  # X_new row
+            [ 1,  0,  0],  # Y_new row
+            [ 0,  0,  1]   # Z_new row
+        ])
+        old_coords = np.array([camera_pose[0], camera_pose[1], camera_pose[2]])  # [X, Y, Z] in old frame
+        camera_pose = T @ old_coords
         # Convert the camera pose to robot pose
+        # print(f"Camera pose: {camera_pose}, Robot last pose: {self.robot_last_pose}")
         robot_pose[0] = (
             camera_pose[0] + self.robot_last_pose[0] + self.robot_info["eye_to_hand"]["dx"]
         )  # x

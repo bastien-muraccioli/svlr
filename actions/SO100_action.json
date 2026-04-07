@@ -1,0 +1,32 @@
+{
+  "robot_name": "SO100",
+  "description": "The SO100 is an open source robot",
+  "init_pose": {
+    "pos_end_effector": [0.2270497637597, -0.017332672293606, 0.146185435044701, 0.05362928,  0.98052498, -0.00677439,  0.18880883],
+    "gripper": 2
+  },
+  "gripper": {
+    "open": 80,
+    "close": 2
+  },
+  "eye_to_hand": {
+    "dx": 0.02,
+    "dy": -0.03,
+    "dz": 0.0,
+    "depth": 0.35
+  },
+  "actions": [
+    {
+      "name": "pick_and_place",
+      "program": "SO100_pick_place",
+      "description": "Picks up an object and place it next to another one. By using this action, you don't need to use the move_to and open/close_gripper actions separately.",
+      "parameters": [
+        {
+          "type": "array of two strings",
+          "description": "[object to pick name, destination object name]",
+          "required": true
+        }
+      ]
+    }
+  ]
+}
