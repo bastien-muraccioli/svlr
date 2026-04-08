@@ -18,6 +18,7 @@ from svlr_msgs.msg import Action, Actions  # custom messages
 from tools.read_json import read_robot_json
 from controller.controller import RobotController
 
+
 class RosRobotController(Node, RobotController):
     def __init__(
         self,
@@ -35,7 +36,8 @@ class RosRobotController(Node, RobotController):
 
         # Folder to save captured images
         image_folder_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "captured_image"
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "captured_image",
         )
         os.makedirs(image_folder_path, exist_ok=True)
 
@@ -77,7 +79,9 @@ class RosRobotController(Node, RobotController):
         self.destroy_subscription(sub)
 
         if not future.done():
-            self.get_logger().error(f"Timeout while waiting for pose on topic: {self.robot_pose_topic}")
+            self.get_logger().error(
+                f"Timeout while waiting for pose on topic: {self.robot_pose_topic}"
+            )
             return None
 
         pose_msg = future.result()
@@ -112,7 +116,9 @@ class RosRobotController(Node, RobotController):
         self.destroy_subscription(sub)
 
         if not future.done():
-            self.get_logger().error(f"Timeout while waiting for image on topic: {self.camera_topic}")
+            self.get_logger().error(
+                f"Timeout while waiting for image on topic: {self.camera_topic}"
+            )
             return None
 
         image_msg = future.result()
@@ -130,16 +136,19 @@ class RosRobotController(Node, RobotController):
             if not future.done():
                 future.set_result(msg)
 
-        sub = self.create_subscription(PointCloud2, self.camera_points_topic, callback, 10)
+        sub = self.create_subscription(
+            PointCloud2, self.camera_points_topic, callback, 10
+        )
         rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
         self.destroy_subscription(sub)
 
         if not future.done():
-            self.get_logger().error(f"Timeout waiting for PointCloud2 on topic: {self.camera_points_topic}")
+            self.get_logger().error(
+                f"Timeout waiting for PointCloud2 on topic: {self.camera_points_topic}"
+            )
             return None
 
         return future.result()
-
 
     def get_3d_point_from_pixel(self, pointcloud_msg, u, v):
         """
@@ -155,15 +164,17 @@ class RosRobotController(Node, RobotController):
 
             # Safety check
             if u < 0 or v < 0 or u >= width or v >= height:
-                self.get_logger().warn(f"Pixel coordinate out of bounds: ({u}, {v}), pointcloud size: ({width}, {height})")
+                self.get_logger().warn(
+                    f"Pixel coordinate out of bounds: ({u}, {v}), pointcloud size: ({width}, {height})"
+                )
                 return None
 
             # Compute index of the pixel in the data array
             index = v * row_step + u * point_step
 
             # Extract bytes for x, y, z (float32)
-            data = pointcloud_msg.data[index:index + 12]
-            x, y, z = struct.unpack('fff', data)
+            data = pointcloud_msg.data[index : index + 12]
+            x, y, z = struct.unpack("fff", data)
             return (x, y, z)
 
         except Exception as e:
@@ -196,9 +207,10 @@ class RosRobotController(Node, RobotController):
 
     def end_action_received(self):
         return self.message_received
-    
+
     def reset_end_action(self):
         self.message_received = False
+
 
 def main(args=None):
     rclpy.init(args=args)

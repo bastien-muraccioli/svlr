@@ -2,6 +2,7 @@ import json
 import os
 
 from controller.controller import Controller
+
 os.environ["TORCH_CUDNN_SDPA_ENABLED"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
@@ -19,7 +20,9 @@ from tools.read_camera import get_camera_image, get_camera_image_ros
 from tools.read_json import read_robot_json
 
 from transformers import logging
+
 logging.set_verbosity_error()
+
 
 class SVLR:
     """Scalable Visual Language Robotics (SVLR) Interface"""
@@ -63,31 +66,44 @@ class SVLR:
             --ros_publisher and --ros_subscriber to run with ROS2.
             """)
             return
-        
+
         self.node = None
         if self.ros_controller_mode:
             self.node = self.init_ros_node()
-        
 
         if self.simulation_mode:
             from controller.simulation_controller import SimulationController
+
             print("Running in simulation mode")
             robot_controller = SimulationController()
         elif self.ros_controller_mode:
             from controller.ros_controller import RosRobotController
+
             print("Running in ROS2 controller mode")
-            robot_controller = RosRobotController(self.node, camera_topic="" if self.args.use_camera_without_ros else self.args.camera_topic)
+            robot_controller = RosRobotController(
+                self.node,
+                camera_topic=(
+                    "" if self.args.use_camera_without_ros else self.args.camera_topic
+                ),
+            )
         elif self.web_controller_mode:
             from controller.web_controller import WebRobotController
-            robot_controller = WebRobotController(base_url=f"http://{self.args.http_server}:{self.args.port}")
+
+            robot_controller = WebRobotController(
+                base_url=f"http://{self.args.http_server}:{self.args.port}"
+            )
         else:
-            print("Please provide either --simulation or --server or --ros_publisher and --ros_subscriber arguments")
+            print(
+                "Please provide either --simulation or --server or --ros_publisher and --ros_subscriber arguments"
+            )
             return
-        
+
         # Init ControlLoop
         self.controller = ControlLoop(self.args, node=self.node)
-        
-        self.robot_controller = Controller(self.controller, robot_controller=robot_controller)
+
+        self.robot_controller = Controller(
+            self.controller, robot_controller=robot_controller
+        )
 
     # -------------------------
     # Backend functions
@@ -105,13 +121,16 @@ class SVLR:
         if self.user_prompt.strip() == "":
             self.robot_controller.user_entered_prompt = False
             return "", ""
-        
+
         if self.robot_controller.perception_pipeline_has_run is False:
             print("Please run the perception pipeline (VLM) first")
             self.robot_controller.user_entered_prompt = False
             return "", ""
-        
-        if self.user_prompt == self.last_user_prompt and self.robot_controller.user_entered_prompt:
+
+        if (
+            self.user_prompt == self.last_user_prompt
+            and self.robot_controller.user_entered_prompt
+        ):
             print("User prompt unchanged, skipping LLM processing")
             skip_action_generation = True
 
@@ -119,26 +138,30 @@ class SVLR:
         self.robot_controller.user_entered_prompt = True
 
         if not skip_action_generation:
-            self.final_action, self.llm_output = self.controller.language_run(self.user_prompt, self.objects_found)
+            self.final_action, self.llm_output = self.controller.language_run(
+                self.user_prompt, self.objects_found
+            )
         else:
             self.controller.action_run(self.llm_output, self.objects_found)
-    
+
         self.robot_controller.language_pipeline_has_run = True
         print("LLM processing done")
         return self.llm_output, self.controller.get_readable_actions()
-    
+
     def process_by_pass_llm_command(self, prompt):
         self.user_prompt = prompt
         self.llm_output = prompt
 
         self.controller.action_run(self.llm_output, self.objects_found)
-        self.final_action = self.controller.get_actions()  
+        self.final_action = self.controller.get_actions()
         self.robot_controller.language_pipeline_has_run = True
         return self.llm_output, self.controller.get_readable_actions()
 
     def process_vlm(self):
         self.perception_pipeline_is_running = True
-        self.objects_found, self.vlm_output, self.frame_with_masks_and_centers = self.controller.perception_run(self.camera_frame)
+        self.objects_found, self.vlm_output, self.frame_with_masks_and_centers = (
+            self.controller.perception_run(self.camera_frame)
+        )
         self.robot_controller.perception_pipeline_has_run = True
         print("VLM processing done")
         self.perception_pipeline_is_running = False
@@ -157,14 +180,26 @@ class SVLR:
             )
             self.camera_frame = cv2.imread(simulation_image_path)
 
-        elif self.args.use_camera_without_ros or (self.simulation_mode and self.args.use_camera_in_simulation) or self.web_controller_mode:
+        elif (
+            self.args.use_camera_without_ros
+            or (self.simulation_mode and self.args.use_camera_in_simulation)
+            or self.web_controller_mode
+        ):
             cap = cv2.VideoCapture(self.camera_device)
 
         while True:
-            if self.args.camera_topic and self.ros_controller_mode and not self.args.use_camera_without_ros:
+            if (
+                self.args.camera_topic
+                and self.ros_controller_mode
+                and not self.args.use_camera_without_ros
+            ):
                 self.camera_frame = self.node.get_camera_image_ros()
-            elif self.args.use_camera_without_ros or (self.simulation_mode and self.args.use_camera_in_simulation) or self.web_controller_mode:
-                ret, self.camera_frame  = cap.read()
+            elif (
+                self.args.use_camera_without_ros
+                or (self.simulation_mode and self.args.use_camera_in_simulation)
+                or self.web_controller_mode
+            ):
+                ret, self.camera_frame = cap.read()
                 if not ret:
                     break
             elif self.simulation_mode:
@@ -178,28 +213,43 @@ class SVLR:
                 print("Failed to get image. Skipping iteration.")
                 continue
 
-            if self.robot_controller.perception_pipeline_has_run is False or self.perception_pipeline_is_running:
-                self.frame_with_masks_and_centers = cv2.cvtColor(self.camera_frame, cv2.COLOR_BGR2RGB)
-            elif self.robot_controller.perception_pipeline_has_run is True: # and not (self.simulation_mode and not self.args.use_camera_in_simulation):
-                self.objects_found, self.frame_with_masks_and_centers = self.controller.perception.update_trackers(self.camera_frame)
+            if (
+                self.robot_controller.perception_pipeline_has_run is False
+                or self.perception_pipeline_is_running
+            ):
+                self.frame_with_masks_and_centers = cv2.cvtColor(
+                    self.camera_frame, cv2.COLOR_BGR2RGB
+                )
+            elif (
+                self.robot_controller.perception_pipeline_has_run is True
+            ):  # and not (self.simulation_mode and not self.args.use_camera_in_simulation):
+                self.objects_found, self.frame_with_masks_and_centers = (
+                    self.controller.perception.update_trackers(self.camera_frame)
+                )
 
             yield self.frame_with_masks_and_centers
-        
-        if self.args.use_camera_without_ros or (self.simulation_mode and self.args.use_camera_in_simulation):
+
+        if self.args.use_camera_without_ros or (
+            self.simulation_mode and self.args.use_camera_in_simulation
+        ):
             cap.release()
-                
 
     def get_robot_state(self):
-        if self.robot_controller.end_action_received and not self.robot_controller.perception_pipeline_has_run:
+        if (
+            self.robot_controller.end_action_received
+            and not self.robot_controller.perception_pipeline_has_run
+        ):
             return "Waiting for running perception pipeline..."
-        if not self.robot_controller.language_pipeline_has_run and self.robot_controller.perception_pipeline_has_run:
+        if (
+            not self.robot_controller.language_pipeline_has_run
+            and self.robot_controller.perception_pipeline_has_run
+        ):
             return "Waiting for user command..."
         if not self.controller.all_actions_finished():
             return f"Robot action in progress: {self.action_progress}"
         if not self.robot_controller.end_action_received:
             return f"Robot executing actions = {self.final_action}"
         return "Idle"
-    
 
     # -------------------------
     # Build Gradio layout
@@ -207,7 +257,7 @@ class SVLR:
     def gradio_interface(self):
         with gr.Blocks(title="Scalable Visual Language Robotics (SVLR)") as demo:
             timer = gr.Timer()
-            
+
             gr.Markdown("# Scalable Visual Language Robotics (SVLR)")
 
             with gr.Row():
@@ -216,23 +266,38 @@ class SVLR:
                     gr.Markdown("### 🧠 Language Reasoning")
                     self.user_prompt = gr.Textbox(
                         label="User Command",
-                        placeholder="e.g., Pick up the red cup / [{\"action\": \"move_to\", \"parameters\": [\"person\"]}]"
+                        placeholder='e.g., Pick up the red cup / [{"action": "move_to", "parameters": ["person"]}]',
                     )
                     run_llm_button = gr.Button("Run LLM 🔄")
-                    by_pass_button = gr.Button("Bypass LLM ⏭️ (user command = llm output)")
-                    llm_output = gr.Textbox(label="LLM Output", interactive=False, lines=3)
-                    final_command = gr.Textbox(label="System Final Command", interactive=False, lines=3)
+                    by_pass_button = gr.Button(
+                        "Bypass LLM ⏭️ (user command = llm output)"
+                    )
+                    llm_output = gr.Textbox(
+                        label="LLM Output", interactive=False, lines=3
+                    )
+                    final_command = gr.Textbox(
+                        label="System Final Command", interactive=False, lines=3
+                    )
                     gr.Markdown("### 🤖 Robot Control")
-                    self.robot_state = gr.Textbox(label="robot action state", interactive=False, value=self.get_robot_state, every=timer, lines=3)
-                    
+                    self.robot_state = gr.Textbox(
+                        label="robot action state",
+                        interactive=False,
+                        value=self.get_robot_state,
+                        every=timer,
+                        lines=3,
+                    )
 
                 # --- RIGHT SIDE (VLM) ---
                 with gr.Column(scale=1):
                     gr.Markdown("### 👁️ Visual Perception")
                     video_display = gr.Image(label="Live Camera", streaming=True)
                     run_vlm_button = gr.Button("Run VLM 🔍")
-                    vlm_output = gr.Textbox(label="VLM Output", interactive=False, lines=3)
-                    env_objects = gr.Textbox(label="Detected Objects", interactive=False, lines=3)
+                    vlm_output = gr.Textbox(
+                        label="VLM Output", interactive=False, lines=3
+                    )
+                    env_objects = gr.Textbox(
+                        label="Detected Objects", interactive=False, lines=3
+                    )
 
             # ---- FUNCTIONAL CONNECTIONS ----
             run_llm_button.click(
@@ -266,6 +331,7 @@ class SVLR:
         print("Starting SVLR...")
         self.robot_controller.control()
 
+
 def parser_args():
     # Parse arguments
     parser = argparse.ArgumentParser(description="Run the SVLR control loop")
@@ -289,9 +355,17 @@ def parser_args():
     )
 
     # Camera
-    parser.add_argument("--camera_topic", type=str, default="/camera/camera/color/image_raw", help="Camera ros2 topic")
     parser.add_argument(
-        "--camera_device", type=str, default="/dev/video0", help="Camera device, you can also use video file path"
+        "--camera_topic",
+        type=str,
+        default="/camera/camera/color/image_raw",
+        help="Camera ros2 topic",
+    )
+    parser.add_argument(
+        "--camera_device",
+        type=str,
+        default="/dev/video0",
+        help="Camera device, you can also use video file path",
     )
     parser.add_argument("--camera_width", type=int, default=640, help="Camera width")
     parser.add_argument("--camera_height", type=int, default=480, help="Camera height")
@@ -339,13 +413,19 @@ def parser_args():
     )
 
     parser.add_argument(
-        "--use_camera_in_simulation", action="store_true", help="Use camera in simulation mode instead of a static image"
+        "--use_camera_in_simulation",
+        action="store_true",
+        help="Use camera in simulation mode instead of a static image",
     )
     parser.add_argument(
-        "--use_camera_without_ros", action="store_true", help="Force using camera device instead of ROS2 topic"
+        "--use_camera_without_ros",
+        action="store_true",
+        help="Force using camera device instead of ROS2 topic",
     )
     parser.add_argument(
-        "--use_depth_camera", action="store_true", help="Use depth camera info instead of fixed depth"
+        "--use_depth_camera",
+        action="store_true",
+        help="Use depth camera info instead of fixed depth",
     )
 
     parser.add_argument(
@@ -361,6 +441,7 @@ def parser_args():
 
     return parser.parse_args()
 
+
 def main():
     args = parser_args()
 
@@ -368,7 +449,6 @@ def main():
     svlr.gradio_interface()
     svlr.run()
 
+
 if __name__ == "__main__":
     main()
-
-    

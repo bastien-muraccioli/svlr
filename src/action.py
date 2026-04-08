@@ -10,6 +10,7 @@ import os
 
 from typing import List
 
+
 class ActionManager:
     def __init__(self, robot_info: dict, perception: Perception):
         self.robot_info = robot_info
@@ -41,7 +42,7 @@ class ActionManager:
 
         # Use sentence similarity to ensure that LLM output matches actions defined in robot_action.json and parameters defined by the VLM (environment_description_list)
         for llm_action in llm_output_action_list:
-            parameters = [] # List of Entity objects corresponding to the parameters
+            parameters = []  # List of Entity objects corresponding to the parameters
             action_name = self.most_similar(
                 target=llm_action["action"],
                 compare_list=self.robot_actions_name,
@@ -52,10 +53,20 @@ class ActionManager:
                 for llm_parameter in llm_action["param"]:
                     # parameter_text = name of an entity in the environment_description_list that is the most similar to the llm_parameter
                     parameter_text = self.most_similar(
-                        target=llm_parameter, compare_list=[entity.name for entity in environment_description_list]
+                        target=llm_parameter,
+                        compare_list=[
+                            entity.name for entity in environment_description_list
+                        ],
                     )
                     # Save the entity corresponding to the parameter text
-                    p = next((ent for ent in environment_description_list if ent.name == parameter_text), None)
+                    p = next(
+                        (
+                            ent
+                            for ent in environment_description_list
+                            if ent.name == parameter_text
+                        ),
+                        None,
+                    )
                     if p is not None:
                         parameters.append(p)
                     else:
@@ -72,28 +83,24 @@ class ActionManager:
             else:
                 param = executable_action["param"]
 
-            self.robot_action_class.add_actions(
-                executable_action["action"],
-                *param
-            )
-        
+            self.robot_action_class.add_actions(executable_action["action"], *param)
+
         self.robot_action_class.action_finished = False
-    
-    def action_tracking(self,
-                        environment_description_list: List[Entity]):
-        """ Update current action_dict_list with the robot coordinates of the objects in the environment based on the latest perception results."""
+
+    def action_tracking(self, environment_description_list: List[Entity]):
+        """Update current action_dict_list with the robot coordinates of the objects in the environment based on the latest perception results."""
 
         current_low_level_action = self.robot_action_class.current_low_level_action()
         if current_low_level_action is None:
             print("No current action to track.")
             return False, environment_description_list
         entity_involved = current_low_level_action["entity"]
-        if(entity_involved is None):
+        if entity_involved is None:
             print("No entity involved in the current action.")
             return False, environment_description_list
         if current_low_level_action["tracking"] is False:
             return False, environment_description_list
-        
+
         # Set the need_to_be_tracked flag for the entity involved in the low level action
         # Reset tracking flags for all others entities
         matched_entity = None
@@ -123,7 +130,7 @@ class ActionManager:
         #         return False, environment_description_list
         #     else:
         #         matched_entity = next((ent for ent in environment_description_list if ent.name == entity_involved.name), None)
-        
+
         # print(f'Entity {entity_involved.name}, pos: {matched_entity.robot_frame_pos}, found: {matched_entity.found}')
         # Update the entity involved in the action with the latest perception results
         self.robot_action_class.sync_action(matched_entity)
@@ -146,6 +153,7 @@ class ActionManager:
         most_similar_index = similarities.argmax().item()
 
         return compare_list[most_similar_index]
+
 
 def parse_action_text(action_text: str):
     """
@@ -181,9 +189,11 @@ def parse_action_text(action_text: str):
             parameters = [parameters]
         elif not isinstance(parameters, list):
             parameters = []
-        action_list.append({
-            "action": action_name,
-            "param": [p.strip() for p in parameters if isinstance(p, str)]
-        })
+        action_list.append(
+            {
+                "action": action_name,
+                "param": [p.strip() for p in parameters if isinstance(p, str)],
+            }
+        )
 
     return action_list

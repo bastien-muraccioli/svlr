@@ -49,6 +49,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+
 def dicts_close(d1, d2, tol=1e-4):
     if d1.keys() != d2.keys():
         return False
@@ -70,12 +71,14 @@ def dicts_close(d1, d2, tol=1e-4):
 
     return True
 
+
 # ===========================================================================
 # Pydantic request / response models
 # ===========================================================================
 
+
 class ActionPayload(BaseModel):
-    model_config = {"extra": "allow"}   # accept any action fields
+    model_config = {"extra": "allow"}  # accept any action fields
 
 
 class SegmentEntityPayload(BaseModel):
@@ -106,6 +109,7 @@ class StatusResponse(BaseModel):
 # Abstract robot backend
 # ===========================================================================
 
+
 class RobotBackend:
     """Common interface shared by mock and real backends."""
 
@@ -132,6 +136,7 @@ class RobotBackend:
 # Mock backend
 # ===========================================================================
 
+
 class MockBackend(RobotBackend):
     """
     Simulated robot.
@@ -142,7 +147,15 @@ class MockBackend(RobotBackend):
 
     def __init__(self, action_duration: float = 2.0):
         self._lock = threading.Lock()
-        self._pose: list[float] = [0.2270497637597, -0.017332672293606, 0.156185435044701, 0.05362928,  0.98052498, -0.00677439,  0.18880883]  # x, y, z, wq, wx, wy, wz
+        self._pose: list[float] = [
+            0.2270497637597,
+            -0.017332672293606,
+            0.156185435044701,
+            0.05362928,
+            0.98052498,
+            -0.00677439,
+            0.18880883,
+        ]  # x, y, z, wq, wx, wy, wz
         self._end_action = False
         self._current_action: dict[str, Any] | None = None
         self._action_count = 0
@@ -232,9 +245,9 @@ class RealRobotBackend(RobotBackend):
     """
 
     FPS = 30
-    LERP_SPEED_M_S = 0.1            # metres per second (5 cm/s default)
-    COMPLETION_THRESHOLD_M = 0.020   # 20 mm
-    COMPLETION_HOLD_FRAMES = 5       # ~0.17 s at 30 Hz
+    LERP_SPEED_M_S = 0.1  # metres per second (5 cm/s default)
+    COMPLETION_THRESHOLD_M = 0.020  # 20 mm
+    COMPLETION_HOLD_FRAMES = 5  # ~0.17 s at 30 Hz
 
     FIXED_ORIENTATION = {
         "ee.wx": 0.150820363068056,
@@ -276,9 +289,7 @@ class RealRobotBackend(RobotBackend):
 
         self._precise_sleep = precise_sleep
 
-        config = SO100FollowerConfig(
-            port=port_id, id=robot_id, use_degrees=True
-        )
+        config = SO100FollowerConfig(port=port_id, id=robot_id, use_degrees=True)
         self._follower = SO100Follower(config)
         motor_names = list(self._follower.bus.motors.keys())
 
@@ -290,7 +301,9 @@ class RealRobotBackend(RobotBackend):
         self.urdf_path = urdf_path
 
         self._fk = RobotProcessorPipeline(
-            steps=[ForwardKinematicsJointsToEE(kinematics=kin, motor_names=motor_names)],
+            steps=[
+                ForwardKinematicsJointsToEE(kinematics=kin, motor_names=motor_names)
+            ],
             to_transition=robot_action_to_transition,
             to_output=transition_to_robot_action,
         )
@@ -298,7 +311,10 @@ class RealRobotBackend(RobotBackend):
         self._ik = RobotProcessorPipeline(
             steps=[
                 EEBoundsAndSafety(
-                    end_effector_bounds={"min": [-1.0, -1.0, -1.0], "max": [1.0, 1.0, 1.0]},
+                    end_effector_bounds={
+                        "min": [-1.0, -1.0, -1.0],
+                        "max": [1.0, 1.0, 1.0],
+                    },
                     max_ee_step_m=0.10,
                 ),
                 InverseKinematicsEEToJoints(
@@ -313,7 +329,9 @@ class RealRobotBackend(RobotBackend):
 
         self._follower.connect()
 
-        self.lerp_speed_m_s = lerp_speed_m_s if lerp_speed_m_s is not None else self.LERP_SPEED_M_S
+        self.lerp_speed_m_s = (
+            lerp_speed_m_s if lerp_speed_m_s is not None else self.LERP_SPEED_M_S
+        )
 
         self._lock = threading.Lock()
         self._end_action = False
@@ -330,24 +348,24 @@ class RealRobotBackend(RobotBackend):
         obs = self._follower.get_observation()
         ee = self._fk(obs)
         self._current_ee: dict[str, float] = {
-            "ee.x":          float(ee["ee.x"]),
-            "ee.y":          float(ee["ee.y"]),
-            "ee.z":          float(ee["ee.z"]),
+            "ee.x": float(ee["ee.x"]),
+            "ee.y": float(ee["ee.y"]),
+            "ee.z": float(ee["ee.z"]),
             "ee.gripper_pos": float(ee.get("ee.gripper_pos", 1.617)),
         }
 
         # Move to initial position if requested
         if not skip_init:
-            target_ee = initial_ee if initial_ee is not None else self.DEFAULT_INITIAL_EE
+            target_ee = (
+                initial_ee if initial_ee is not None else self.DEFAULT_INITIAL_EE
+            )
             self._move_to_initial_position(target_ee)
 
         # Control loop
         self._running = True
-        self._control_thread = threading.Thread(
-            target=self._control_loop, daemon=True
-        )
+        self._control_thread = threading.Thread(target=self._control_loop, daemon=True)
         self._control_thread.start()
-        
+
         print(
             f"[real] Connected to robot on {port_id}  "
             f"(lerp speed={self.lerp_speed_m_s} m/s)"
@@ -358,69 +376,69 @@ class RealRobotBackend(RobotBackend):
     def _move_to_initial_position(self, target_ee: dict[str, float]) -> None:
         """Move robot smoothly to initial position before starting control loop."""
         print("[INIT] Moving to initial position...")
-        
+
         # Get current position
         current_pos = (
             self._current_ee["ee.x"],
             self._current_ee["ee.y"],
-            self._current_ee["ee.z"]
+            self._current_ee["ee.z"],
         )
-        
+
         # Target position
-        target_pos = (
-            target_ee["ee.x"],
-            target_ee["ee.y"],
-            target_ee["ee.z"]
-        )
-        
+        target_pos = (target_ee["ee.x"], target_ee["ee.y"], target_ee["ee.z"])
+
         # Calculate distance and frames
         dist = math.sqrt(
-            (target_pos[0] - current_pos[0]) ** 2 +
-            (target_pos[1] - current_pos[1]) ** 2 +
-            (target_pos[2] - current_pos[2]) ** 2
+            (target_pos[0] - current_pos[0]) ** 2
+            + (target_pos[1] - current_pos[1]) ** 2
+            + (target_pos[2] - current_pos[2]) ** 2
         )
         duration_s = dist / self.lerp_speed_m_s
         frames = max(1, round(duration_s * self.FPS))
-        
-        print(f"[INIT] Distance: {dist*100:.1f} cm, Duration: {duration_s:.2f}s, Frames: {frames}")
-        
+
+        print(
+            f"[INIT] Distance: {dist*100:.1f} cm, Duration: {duration_s:.2f}s, Frames: {frames}"
+        )
+
         # Generate trajectory
         waypoints = [current_pos, target_pos]
         trajectory = self._lerp_waypoints(waypoints, frames)
-        
+
         # Execute trajectory
         obs = self._follower.get_observation()
-        target_gripper = target_ee.get("ee.gripper_pos", self._current_ee["ee.gripper_pos"])
-        
+        target_gripper = target_ee.get(
+            "ee.gripper_pos", self._current_ee["ee.gripper_pos"]
+        )
+
         for i, pos in enumerate(trajectory):
             t0 = time.perf_counter()
-            
+
             # Build EE action
             ee_action = {
                 "ee.x": pos[0],
                 "ee.y": pos[1],
                 "ee.z": pos[2],
                 "ee.gripper_pos": target_gripper,
-                **self.FIXED_ORIENTATION
+                **self.FIXED_ORIENTATION,
             }
-            
+
             # Convert to joint space and send
             joints = self._ik((ee_action, obs))
             print("[INIT] Sending action", joints)
             self._follower.send_action(joints)
-            
+
             # Update observation for next iteration
             obs = self._follower.get_observation()
-            
+
             # Sleep to maintain FPS
             elapsed = time.perf_counter() - t0
             self._precise_sleep(max(1.0 / self.FPS - elapsed, 0.0))
-            
+
             # Progress indicator every 30 frames
             if (i + 1) % 30 == 0 or i == len(trajectory) - 1:
                 progress = (i + 1) / len(trajectory) * 100
                 print(f"[INIT] Progress: {progress:.1f}%")
-        
+
         # Update current EE to target
         self._current_ee = {
             "ee.x": target_ee["ee.x"],
@@ -428,41 +446,40 @@ class RealRobotBackend(RobotBackend):
             "ee.z": target_ee["ee.z"],
             "ee.gripper_pos": target_gripper,
         }
-        
+
         print("[INIT] Initial position reached", self._current_ee)
 
     @staticmethod
     def _lerp_waypoints(
-        waypoints: list[tuple[float, float, float]],
-        total_frames: int
+        waypoints: list[tuple[float, float, float]], total_frames: int
     ) -> list[tuple[float, float, float]]:
         """
         Generate a smooth trajectory through waypoints.
-        
+
         Args:
             waypoints: List of (x, y, z) positions
             total_frames: Total number of frames for the entire trajectory
-            
+
         Returns:
             List of interpolated (x, y, z) positions
         """
         if len(waypoints) < 2:
             return waypoints
-        
+
         trajectory = []
         num_segments = len(waypoints) - 1
         frames_per_segment = total_frames // num_segments
-        
+
         for i in range(num_segments):
             start = waypoints[i]
             end = waypoints[i + 1]
-            
+
             # Use remaining frames for last segment
             if i == num_segments - 1:
                 frames = total_frames - len(trajectory)
             else:
                 frames = frames_per_segment
-            
+
             for frame in range(frames):
                 t = frame / max(frames, 1)
                 pos = (
@@ -471,11 +488,11 @@ class RealRobotBackend(RobotBackend):
                     start[2] + t * (end[2] - start[2]),
                 )
                 trajectory.append(pos)
-        
+
         # Ensure we end at the final waypoint
         if trajectory[-1] != waypoints[-1]:
             trajectory.append(waypoints[-1])
-        
+
         return trajectory
 
     # -- control loop --
@@ -483,7 +500,7 @@ class RealRobotBackend(RobotBackend):
     def _control_loop(self):
         obs = None  # Will be fetched on first iteration
         obs = self._follower.get_observation()
-        
+
         # Import lerobot lazily so mock mode works without it installed
         from lerobot.model.kinematics import RobotKinematics
         from lerobot.processor import RobotProcessorPipeline
@@ -498,6 +515,7 @@ class RealRobotBackend(RobotBackend):
             ForwardKinematicsJointsToEE,
             InverseKinematicsEEToJoints,
         )
+
         motor_names = list(self._follower.bus.motors.keys())
 
         kin = RobotKinematics(
@@ -509,7 +527,10 @@ class RealRobotBackend(RobotBackend):
         local_ik = RobotProcessorPipeline(
             steps=[
                 EEBoundsAndSafety(
-                    end_effector_bounds={"min": [-1.0, -1.0, -1.0], "max": [1.0, 1.0, 1.0]},
+                    end_effector_bounds={
+                        "min": [-1.0, -1.0, -1.0],
+                        "max": [1.0, 1.0, 1.0],
+                    },
                     max_ee_step_m=0.10,
                 ),
                 InverseKinematicsEEToJoints(
@@ -521,7 +542,7 @@ class RealRobotBackend(RobotBackend):
             to_transition=robot_action_observation_to_transition,
             to_output=transition_to_robot_action,
         )
-        
+
         while self._running:
             t0 = time.perf_counter()
 
@@ -536,7 +557,7 @@ class RealRobotBackend(RobotBackend):
                     # Get current setpoint from trajectory
                     setpoint = self._trajectory[self._trajectory_index]
                     self._trajectory_index += 1
-                    
+
                     target_for_hold = self._target_ee
                 elif self._target_ee is not None:
                     # Trajectory finished — keep sending the final target
@@ -548,16 +569,16 @@ class RealRobotBackend(RobotBackend):
 
             if setpoint is not None:
                 ee_action = {**setpoint, **self.FIXED_ORIENTATION}
-                
+
                 # Use the fresh observation from this iteration
                 joints = local_ik((ee_action, obs))
-                
+
                 self._follower.send_action(joints)
-                
+
                 self._current_ee: dict[str, float] = {
-                    "ee.x":          float(ee_meas["ee.x"]),
-                    "ee.y":          float(ee_meas["ee.y"]),
-                    "ee.z":          float(ee_meas["ee.z"]),
+                    "ee.x": float(ee_meas["ee.x"]),
+                    "ee.y": float(ee_meas["ee.y"]),
+                    "ee.z": float(ee_meas["ee.z"]),
                     "ee.gripper_pos": float(ee_meas.get("ee.gripper_pos", 1.617)),
                 }
 
@@ -570,8 +591,10 @@ class RealRobotBackend(RobotBackend):
                     print(f"[CONTROL] Distance to target: {dist*1000:.1f} mm")
 
                     with self._lock:
-                        trajectory_done = self._trajectory_index >= len(self._trajectory)
-                        
+                        trajectory_done = self._trajectory_index >= len(
+                            self._trajectory
+                        )
+
                         if trajectory_done:
                             self._hold_frames += 1
                             if (
@@ -595,7 +618,13 @@ class RealRobotBackend(RobotBackend):
 
     def get_pose(self) -> list[float]:
         with self._lock:
-            quat = scipy.spatial.transform.Rotation.from_rotvec([self.FIXED_ORIENTATION["ee.wx"], self.FIXED_ORIENTATION["ee.wy"], self.FIXED_ORIENTATION["ee.wz"]]).as_quat()
+            quat = scipy.spatial.transform.Rotation.from_rotvec(
+                [
+                    self.FIXED_ORIENTATION["ee.wx"],
+                    self.FIXED_ORIENTATION["ee.wy"],
+                    self.FIXED_ORIENTATION["ee.wz"],
+                ]
+            ).as_quat()
             return [
                 float(self._current_ee["ee.x"]),
                 float(self._current_ee["ee.y"]),
@@ -603,7 +632,7 @@ class RealRobotBackend(RobotBackend):
                 quat[0],
                 quat[1],
                 quat[2],
-                quat[3]
+                quat[3],
             ]
 
     def receive_action(self, action: dict[str, Any]) -> None:
@@ -614,7 +643,9 @@ class RealRobotBackend(RobotBackend):
                 "ee.z": action["pos_end_effector"][2],
                 "ee.gripper_pos": action["gripper"],
             }
-            if self._current_action is None or not dicts_close(action, self._current_action):
+            if self._current_action is None or not dicts_close(
+                action, self._current_action
+            ):
                 print("NEW ACTION RECEIVED:", action)
                 self._current_action = action
                 self._action_count += 1
@@ -626,25 +657,28 @@ class RealRobotBackend(RobotBackend):
                     start_pos = (
                         self._current_ee["ee.x"],
                         self._current_ee["ee.y"],
-                        self._current_ee["ee.z"]
+                        self._current_ee["ee.z"],
                     )
-                    
+
                     # Target position
                     end_pos = (
                         float(action["ee.x"]),
                         float(action["ee.y"]),
-                        float(action["ee.z"])
+                        float(action["ee.z"]),
                     )
-                    
+
                     target_gripper = float(
-                        action.get("ee.gripper_pos", self._current_ee.get("ee.gripper_pos", 1.617))
+                        action.get(
+                            "ee.gripper_pos",
+                            self._current_ee.get("ee.gripper_pos", 1.617),
+                        )
                     )
 
                     # Calculate distance and duration
                     dist = math.sqrt(
-                        (end_pos[0] - start_pos[0]) ** 2 +
-                        (end_pos[1] - start_pos[1]) ** 2 +
-                        (end_pos[2] - start_pos[2]) ** 2
+                        (end_pos[0] - start_pos[0]) ** 2
+                        + (end_pos[1] - start_pos[1]) ** 2
+                        + (end_pos[2] - start_pos[2]) ** 2
                     )
                     duration_s = dist / self.lerp_speed_m_s
                     min_frames = 10  # Ensure at least ~0.33s for smooth motion
@@ -653,7 +687,7 @@ class RealRobotBackend(RobotBackend):
                     # Generate trajectory through waypoints
                     waypoints = [start_pos, end_pos]
                     position_trajectory = self._lerp_waypoints(waypoints, frames)
-                    
+
                     # Convert to full EE dicts
                     self._trajectory = [
                         {
@@ -664,7 +698,7 @@ class RealRobotBackend(RobotBackend):
                         }
                         for pos in position_trajectory
                     ]
-                    
+
                     self._trajectory_index = 0
                     self._target_ee = {
                         "ee.x": end_pos[0],
@@ -709,12 +743,14 @@ class RealRobotBackend(RobotBackend):
                 "current_action": self._current_action,
                 "end_action": self._end_action,
                 "pose": dict(self._current_ee),
-                "trajectory_progress": f"{self._trajectory_index}/{len(self._trajectory)}"
+                "trajectory_progress": f"{self._trajectory_index}/{len(self._trajectory)}",
             }
+
 
 # ===========================================================================
 # FastAPI application factory
 # ===========================================================================
+
 
 def create_app(backend: RobotBackend, mode: str) -> FastAPI:
 
@@ -786,6 +822,7 @@ def create_app(backend: RobotBackend, mode: str) -> FastAPI:
         async def _shutdown():
             await asyncio.sleep(0.1)
             raise SystemExit(0)
+
         asyncio.create_task(_shutdown())
         return {"ok": True, "message": "shutting down"}
 
@@ -796,6 +833,7 @@ def create_app(backend: RobotBackend, mode: str) -> FastAPI:
 # CLI entry point
 # ===========================================================================
 
+
 def parse_args():
     p = argparse.ArgumentParser(description="Robot web server")
     p.add_argument(
@@ -804,12 +842,8 @@ def parse_args():
         default="mock",
         help="Backend mode (default: mock)",
     )
-    p.add_argument(
-        "--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)"
-    )
-    p.add_argument(
-        "--port", type=int, default=65500, help="Bind port (default: 65500)"
-    )
+    p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
+    p.add_argument("--port", type=int, default=65500, help="Bind port (default: 65500)")
     # Mock options
     p.add_argument(
         "--action-duration",
@@ -882,7 +916,7 @@ def main():
         "  POST /reset_end_action\n"
         "  POST /segment_entity\n"
         "  POST /stop\n"
-       f"  Docs → http://localhost:{args.port}/docs\n"
+        f"  Docs → http://localhost:{args.port}/docs\n"
     )
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")

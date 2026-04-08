@@ -20,6 +20,7 @@ import textwrap
 TARGET_W = 640
 TARGET_H = 360
 
+
 def resize_frame_for_inference(frame):
     """
     Downscale frame to 640x360 for EdgeTAM/SAM2 inference,
@@ -36,6 +37,7 @@ def resize_frame_for_inference(frame):
     scale_y = orig_h / TARGET_H
 
     return small, frame, (scale_x, scale_y)
+
 
 class Perception:
     def __init__(self, robot_camera: RobotCamera, vlm_name: str, vlm_provider: str):
@@ -54,14 +56,17 @@ class Perception:
         self.image = None
         self.frame_with_masks_and_centers = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.edgetam_model = EdgeTamVideoModel.from_pretrained("yonigozlan/EdgeTAM-hf").to(self.device, dtype=torch.float16)
-        self.edgetam_processor = Sam2VideoProcessor.from_pretrained("yonigozlan/EdgeTAM-hf")
+        self.edgetam_model = EdgeTamVideoModel.from_pretrained(
+            "yonigozlan/EdgeTAM-hf"
+        ).to(self.device, dtype=torch.float16)
+        self.edgetam_processor = Sam2VideoProcessor.from_pretrained(
+            "yonigozlan/EdgeTAM-hf"
+        )
         self.inference_sessions = {}  # key: entity_name -> session
 
         self.session_reset_interval = 100  # reset every N frames to avoid memory leak
         self.local_frame_idx = {}  # key: entity_name -> local frame index
         self.edgetam_session = None
-
 
     def initialize_trackers(self):
         frame_np = np.array(self.image.convert("RGB")).copy()
@@ -74,8 +79,7 @@ class Perception:
                 continue
 
             session = self.edgetam_processor.init_video_session(
-                inference_device=self.device,
-                dtype=torch.float16
+                inference_device=self.device, dtype=torch.float16
             )
 
             # Scale bbox to small frame
@@ -87,7 +91,9 @@ class Perception:
             input_boxes = [[[x0, y0, x1, y1]]]
 
             rgb_small_pil = Image.fromarray(small_frame)
-            inputs = self.edgetam_processor(rgb_small_pil, device=self.device, return_tensors="pt")
+            inputs = self.edgetam_processor(
+                rgb_small_pil, device=self.device, return_tensors="pt"
+            )
             original_size = inputs.original_sizes[0]
 
             self.edgetam_processor.add_inputs_to_inference_session(
@@ -112,10 +118,11 @@ class Perception:
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
 
-
     def _reset_session(self, entity, current_frame_np):
         """Safely resets an EdgeTAM session for a single entity."""
-        print(f"[EdgeTAM] Resetting session for '{entity.name}' to prevent memory leak...")
+        print(
+            f"[EdgeTAM] Resetting session for '{entity.name}' to prevent memory leak..."
+        )
 
         # Delete old session
         old_session = self.inference_sessions.get(entity.name, None)
@@ -126,7 +133,9 @@ class Perception:
         torch.cuda.ipc_collect()
 
         # Downscale frame
-        small_frame, original_frame, (sx, sy) = resize_frame_for_inference(current_frame_np)
+        small_frame, original_frame, (sx, sy) = resize_frame_for_inference(
+            current_frame_np
+        )
 
         # Recreate session
         session = self.edgetam_processor.init_video_session(
@@ -143,7 +152,9 @@ class Perception:
         input_boxes = [[[x0, y0, x1, y1]]]
 
         rgb_small_pil = Image.fromarray(small_frame)
-        inputs = self.edgetam_processor(rgb_small_pil, device=self.device, return_tensors="pt")
+        inputs = self.edgetam_processor(
+            rgb_small_pil, device=self.device, return_tensors="pt"
+        )
         original_size = inputs.original_sizes[0]
 
         self.edgetam_processor.add_inputs_to_inference_session(
@@ -157,10 +168,10 @@ class Perception:
         self.inference_sessions[entity.name] = session
         self.local_frame_idx[entity.name] = 1
 
-
-
     def update_trackers(self, frame):
-        frame_np = np.array(Image.fromarray(cv.cvtColor(frame, cv.COLOR_BGR2RGB))).copy()
+        frame_np = np.array(
+            Image.fromarray(cv.cvtColor(frame, cv.COLOR_BGR2RGB))
+        ).copy()
 
         # Downscale for EdgeTAM
         small_frame, original_frame, (sx, sy) = resize_frame_for_inference(frame_np)
@@ -189,14 +200,13 @@ class Perception:
 
                 with torch.cuda.amp.autocast(dtype=torch.float16):
                     outputs = self.edgetam_model(
-                        inference_session=session,
-                        frame=pixel_values
+                        inference_session=session, frame=pixel_values
                     )
 
                 mask_tensor = self.edgetam_processor.post_process_masks(
                     [outputs.pred_masks],
                     original_sizes=inputs.original_sizes,
-                    binarize=True
+                    binarize=True,
                 )[0]
 
             # Mask to numpy
@@ -207,7 +217,11 @@ class Perception:
                 mask_np = (mask_np * 255).astype(np.uint8)
 
             # Upscale mask back to original frame
-            mask_np = cv.resize(mask_np, (original_frame.shape[1], original_frame.shape[0]), interpolation=cv.INTER_NEAREST)
+            mask_np = cv.resize(
+                mask_np,
+                (original_frame.shape[1], original_frame.shape[0]),
+                interpolation=cv.INTER_NEAREST,
+            )
 
             # Compute centroid and bbox
             centroid, bbox = self.centroid_segmentation(mask_np)
@@ -227,8 +241,6 @@ class Perception:
         return self.environment_description_list, cv.cvtColor(
             self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR
         )
-
-
 
     def build_frame_with_masks_and_centers(self, original_frame):
         """
@@ -277,10 +289,14 @@ class Perception:
             overlay = np.where(mask_bin[..., None].astype(bool), colored_mask, overlay)
 
         # Blend the overlay and the original frame
-        blended = cv.addWeighted(frame, 1 - self.mask_opacity, overlay, self.mask_opacity, 0)
-        
+        blended = cv.addWeighted(
+            frame, 1 - self.mask_opacity, overlay, self.mask_opacity, 0
+        )
+
         # Draw bounding boxes, centroids and labels
-        for bbox, label, (x, y), robot_coord in zip(bboxes, labels, centers, robot_coords):
+        for bbox, label, (x, y), robot_coord in zip(
+            bboxes, labels, centers, robot_coords
+        ):
             x0, y0, x1, y1 = map(int, bbox)
             cv.rectangle(blended, (x0, y0), (x1, y1), (0, 255, 255), 2)  # yellow box
             x, y = int(x), int(y)
@@ -310,7 +326,6 @@ class Perception:
 
         # Save result (keep as RGB for consistency with self.image)
         self.frame_with_masks_and_centers = blended
-
 
     def centroid_segmentation(self, map):
         """
@@ -362,8 +377,8 @@ class Perception:
         image_np = np.array(image_pil)
 
         imgs_seg = []
-        centers  = []
-        bboxes   = []  # store bounding boxes from segmentation
+        centers = []
+        bboxes = []  # store bounding boxes from segmentation
 
         # Loop over each entity individually
         for entity in self.environment_description_list:
@@ -371,15 +386,20 @@ class Perception:
                 result = model.predict([image_pil], [entity.name])[0]
 
             # Take only the highest‑confidence mask
-            masks  = result["masks"]
+            masks = result["masks"]
             scores = result["scores"]
-            if scores is None or np.size(scores) == 0 or masks is None or len(masks) == 0:
+            if (
+                scores is None
+                or np.size(scores) == 0
+                or masks is None
+                or len(masks) == 0
+            ):
                 print(f"No segmentation found for '{entity.name}', skipping.")
                 self.environment_description_list.remove(entity)
                 continue
 
             best_idx = int(np.argmax(scores))
-            best_mask = (masks[best_idx].astype(np.uint8) * 255)
+            best_mask = masks[best_idx].astype(np.uint8) * 255
 
             # Compute centroid & bbox
             center, bbox = self.centroid_segmentation(best_mask)
@@ -395,7 +415,7 @@ class Perception:
             vis = best_mask.copy()
             x0, y0, x1, y1 = map(int, bbox)
             cv.rectangle(vis, (x0, y0), (x1, y1), (255, 255, 255), 3)
-            cv.circle(vis, (int(center[0]), int(center[1])), 5, (255,255,255), -1)
+            cv.circle(vis, (int(center[0]), int(center[1])), 5, (255, 255, 255), -1)
             imgs_seg.append(vis)
 
         if not centers:
@@ -404,7 +424,7 @@ class Perception:
 
         # Rescale centers and bboxes back to original image dimensions
         orig_w, orig_h = self.image.size
-        mask_h, mask_w = (imgs_seg[0].shape[:2] if imgs_seg else (1,1))
+        mask_h, mask_w = imgs_seg[0].shape[:2] if imgs_seg else (1, 1)
         final_img = image_np.copy()
         for i, c in enumerate(centers):
             c[0] = c[0] * orig_w / mask_w
@@ -418,22 +438,24 @@ class Perception:
                 y1 * orig_h / mask_h,
             ]
             cv.circle(final_img, (int(c[0]), int(c[1])), 20, (255, 0, 0), -1)
-        
+
         # Update entity positions, masks and bboxes
         for i, entity in enumerate(self.environment_description_list):
             entity.update_position((int(centers[i][0]), int(centers[i][1])))
             entity.bbox = bboxes[i]
-            entity.mask = imgs_seg[i]           
+            entity.mask = imgs_seg[i]
 
         # Build composite frame with masks and centers
         self.build_frame_with_masks_and_centers(image_np)
 
     def segment_one_entity(self, entity_name: str):
         """
-         Segment one entity from the image and add it to the environment description list.
-         Returns True if successful, False otherwise.
+        Segment one entity from the image and add it to the environment description list.
+        Returns True if successful, False otherwise.
         """
-        print(f"Run Image Segmentation model {self.seg_model_name} for entity '{entity_name}'")
+        print(
+            f"Run Image Segmentation model {self.seg_model_name} for entity '{entity_name}'"
+        )
         # Initialize model
         model = LangSAM()
 
@@ -445,14 +467,14 @@ class Perception:
             result = model.predict([image_pil], [entity_name])[0]
 
         # Take only the highest‑confidence mask
-        masks  = result["masks"]
+        masks = result["masks"]
         scores = result["scores"]
         if scores is None or np.size(scores) == 0 or masks is None or len(masks) == 0:
             print(f"No segmentation found for '{entity_name}', skipping.")
             return False
 
         best_idx = int(np.argmax(scores))
-        best_mask = (masks[best_idx].astype(np.uint8) * 255)
+        best_mask = masks[best_idx].astype(np.uint8) * 255
 
         # Compute centroid & bbox
         center, bbox = self.centroid_segmentation(best_mask)
@@ -477,10 +499,11 @@ class Perception:
 
         # Initialize EdgeTam session
         session = self.edgetam_processor.init_video_session(
-            inference_device=self.device,
-            dtype=torch.float16
+            inference_device=self.device, dtype=torch.float16
         )
-        inputs = self.edgetam_processor(self.image.convert("RGB"), device=self.device, return_tensors="pt")
+        inputs = self.edgetam_processor(
+            self.image.convert("RGB"), device=self.device, return_tensors="pt"
+        )
         original_size = inputs.original_sizes[0]
         x0, y0, x1, y1 = map(int, bbox)
         input_boxes = [[[x0, y0, x1, y1]]]
@@ -505,7 +528,6 @@ class Perception:
 
         return True
 
-
     def run(self, image):
         # Convert BGR (OpenCV) to RGB
         self.image = Image.fromarray(cv.cvtColor(image, cv.COLOR_BGR2RGB))
@@ -519,7 +541,9 @@ class Perception:
         print("Starting VLM")
         vlm = VLM(self.vlm_name, ollama_image)
         entities_name_found = vlm.run_and_parse()
-        self.environment_description_list = [Entity(name, self.robot_camera) for name in entities_name_found]
+        self.environment_description_list = [
+            Entity(name, self.robot_camera) for name in entities_name_found
+        ]
 
         # Segmentation
         print("Starting Segmentation")
@@ -528,4 +552,8 @@ class Perception:
         # Initialize trackers
         self.initialize_trackers()
 
-        return self.environment_description_list, vlm.raw_output, cv.cvtColor(self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR)
+        return (
+            self.environment_description_list,
+            vlm.raw_output,
+            cv.cvtColor(self.frame_with_masks_and_centers, cv.COLOR_RGB2BGR),
+        )

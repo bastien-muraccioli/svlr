@@ -45,7 +45,7 @@ class WebRobotController(RobotController):
             return data.get("pose")
         except requests.RequestException:
             return None
-        
+
     def send_actions(self, action) -> None:
         if action is None:
             return
@@ -69,9 +69,7 @@ class WebRobotController(RobotController):
             else:
                 print(f"Warning: Unexpected action type: {type(action)}")
                 return
-            
-            requests.post(
-                f"{self.base_url}/send_action", json=payload, timeout=1.0
-            )
+
+            requests.post(f"{self.base_url}/send_action", json=payload, timeout=1.0)
         except requests.RequestException as e:
             print(f"Failed to send action: {e}")

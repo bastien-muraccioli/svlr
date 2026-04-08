@@ -3,6 +3,7 @@ import time
 
 from control_loop import ControlLoop
 
+
 class RobotController(ABC):
     """
     Abstract class used to control robot
@@ -23,10 +24,12 @@ class RobotController(ABC):
     @abstractmethod
     def send_actions(self, action) -> None:
         pass
-    
+
+
 # ---------------------------------------------------------------------------
 # Controller class (replaces the ROS-based one)
 # ---------------------------------------------------------------------------
+
 
 class Controller:
     """
@@ -38,7 +41,7 @@ class Controller:
         self.controller = controller
         self.node = robot_controller
 
-        self.time_step: float = 0.05          # seconds between loop ticks
+        self.time_step: float = 0.05  # seconds between loop ticks
         self.max_try_to_find_entity: int = 3
 
         # Shared state (same names as the original)
@@ -86,10 +89,7 @@ class Controller:
                     self.end_action_received = False
 
                 # --- Poll for end-of-action from the robot ---
-                if (
-                    not self.robot_searching_for_entity
-                    and not self.end_action_received
-                ):
+                if not self.robot_searching_for_entity and not self.end_action_received:
                     if self.node.end_action_received():
                         print("End of action received from web server")
                         self.end_action_received = True
@@ -134,7 +134,9 @@ class Controller:
                             self.robot_searching_for_entity = True
                             self.node.reset_end_action()
                             self.end_action_received = True
-                            self.controller.action.robot_action_class.current_action_step -= 1
+                            self.controller.action.robot_action_class.current_action_step -= (
+                                1
+                            )
                             break
                     if not self.robot_searching_for_entity:
                         self.final_action = self.controller.get_current_action()
@@ -163,9 +165,7 @@ class Controller:
                             self.counter_try_to_find_entity += 1
 
                 # --- Send current action ---
-                self.action_size, self.action_counter = (
-                    self.controller.action_counter()
-                )
+                self.action_size, self.action_counter = self.controller.action_counter()
                 self.action_progress = (
                     f"Sending action {self.action_counter + 1}/{self.action_size}:\n"
                     f" {self.controller.get_readable_current_low_level_action()}"

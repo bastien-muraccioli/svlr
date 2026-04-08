@@ -18,13 +18,13 @@ class SimulationController(RobotController):
     # ------------------------------------------------------------------
 
     def end_action_received(self) -> bool:
-            return self._end_action
+        return self._end_action
 
     def reset_end_action(self) -> None:
         self._end_action = False
 
     def get_robot_pose(self, timeout_sec: float = 0.1):
-        return [0, 0, 0, 1.0, 0.0, 0.0, 0.0] # Dummy pose (x, y, z, qw, qx, qy, qz)
+        return [0, 0, 0, 1.0, 0.0, 0.0, 0.0]  # Dummy pose (x, y, z, qw, qx, qy, qz)
 
     def send_actions(self, _action) -> None:
         def set_done():

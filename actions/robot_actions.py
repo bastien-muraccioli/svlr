@@ -1,48 +1,62 @@
-
 from src.entity import Entity
 
 
-class RobotActions():
+class RobotActions:
     def __init__(self):
         self.robot_name = ""
         self.robot_info = {}
         self.all_actions_finished = True
         self.current_action_step = 0
         self.action_step = 0
-        self.robot_actions = [] # List of all low-level action results
+        self.robot_actions = []  # List of all low-level action results
         self.action_names = []  # List of action names for quick reference
-        self.entities_involved = []  # List of arrays of entity names involved in actions
-        self.low_level_actions = []  # List of dicts with "function" (low level action name), "params" and "entity" (entities involved in the low level action)
+        self.entities_involved = (
+            []
+        )  # List of arrays of entity names involved in actions
+        self.low_level_actions = (
+            []
+        )  # List of dicts with "function" (low level action name), "params" and "entity" (entities involved in the low level action)
 
     def execute(self, function_name: str, *params):
         """
-        Calls an action method defined in the robot subclass, 
+        Calls an action method defined in the robot subclass,
         validating against the JSON definition.
         """
         # Check if action is defined in robot JSON
-        action_entry = next((a for a in self.robot_info["actions"] if a["name"] == function_name), None)
+        action_entry = next(
+            (a for a in self.robot_info["actions"] if a["name"] == function_name), None
+        )
         if not action_entry:
-            print(f"❌ {self.robot_name}'s function '{function_name}' not found in JSON.")
+            print(
+                f"❌ {self.robot_name}'s function '{function_name}' not found in JSON."
+            )
             return None, None
 
         # Check that the method actually exists
         if not hasattr(self, function_name):
-            print(f"❌ Function '{function_name}' not found in class '{type(self).__name__}'.")
+            print(
+                f"❌ Function '{function_name}' not found in class '{type(self).__name__}'."
+            )
             return None, None
 
         func = getattr(self, function_name)
 
         try:
             low_level_actions = func(*params) if params else func()
-            actions = [self.call_low_level_action(act["function"], *act["params"]) for act in low_level_actions]
+            actions = [
+                self.call_low_level_action(act["function"], *act["params"])
+                for act in low_level_actions
+            ]
             self.action_names.append(function_name)
-            self.entities_involved.append([param.name if param else "" for param in params])
+            self.entities_involved.append(
+                [param.name if param else "" for param in params]
+            )
             self.low_level_actions.extend(low_level_actions)
             return actions
         except Exception as e:
             print(f"⚠️ Error executing '{function_name}': {e}")
             return None, None
-        
+
     def call_low_level_action(self, function_name: str, *params):
         """
         Calls a low level action method defined in the robot subclass.
@@ -50,7 +64,9 @@ class RobotActions():
         function_name = "low_level_" + function_name
         # Check that the method actually exists
         if not hasattr(self, function_name):
-            print(f"❌ Function '{function_name}' not found in class '{type(self).__name__}'.")
+            print(
+                f"❌ Function '{function_name}' not found in class '{type(self).__name__}'."
+            )
             return None
 
         func = getattr(self, function_name)
@@ -68,7 +84,7 @@ class RobotActions():
         This is useful when the entity's position has been updated and we want to ensure
         that all actions involving this entity use the latest position.
         """
-        
+
         # Update parameters with the provided entity if applicable
         for i in range(len(self.low_level_actions)):
             low_level_action = self.low_level_actions[i]
@@ -79,8 +95,10 @@ class RobotActions():
                     if param.name == entity.name:
                         low_level_action_params[j] = entity
             self.low_level_actions[i]["params"] = low_level_action_params
-            self.robot_actions[i] = self.call_low_level_action(low_level_action_name, *low_level_action_params)
-    
+            self.robot_actions[i] = self.call_low_level_action(
+                low_level_action_name, *low_level_action_params
+            )
+
     def action_step_success(self):
         """
         Call this method after successfully completing the current action step.
@@ -123,20 +141,22 @@ class RobotActions():
             for action in actions:
                 self.robot_actions.append(action)
         else:
-            print(f"⚠️ Warning: No actions returned from '{function_name}' with params {params}.")
+            print(
+                f"⚠️ Warning: No actions returned from '{function_name}' with params {params}."
+            )
 
     def current_action(self):
         """
         Returns the current action to be executed.
         """
         return self.robot_actions[self.current_action_step]
-    
+
     def current_low_level_action(self):
         """
         Returns the current low level action to be executed.
         """
         return self.low_level_actions[self.current_action_step]
-    
+
     def get_readable_actions(self):
         result = ""
         # print(f'action names: {self.action_names}')
@@ -144,10 +164,13 @@ class RobotActions():
         for i in range(len(self.action_names)):
             result += f"Action {i + 1}: {self.action_names[i]} with params: [{','.join(self.entities_involved[i])}]\n"
         return result.strip()
-    
+
     def get_readable_current_low_level_action(self):
         action = self.current_low_level_action()
         if action is None:
             return "No current low level action."
-        params = [param.name if isinstance(param, Entity) else "" for param in action["params"]]
+        params = [
+            param.name if isinstance(param, Entity) else ""
+            for param in action["params"]
+        ]
         return f"Current low level action: {action['function']} with entity: [{', '.join(params)}]"

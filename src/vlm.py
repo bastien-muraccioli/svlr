@@ -2,6 +2,7 @@ import requests
 import json
 import time
 
+
 class VLM:
     def __init__(self, vlm_name: str, image=None):
 
@@ -9,8 +10,7 @@ class VLM:
         self.raw_output = ""
         self.image = image
 
-        self.prompt = \
-"""You see a top-down view of an image.
+        self.prompt = """You see a top-down view of an image.
 Identify every distinct physical object or entity visible in the image.
 List each object individually. If multiple similar or identical objects appear (e.g., two cups, two photos, or two apples), list each one as a separate entry.
 Do not group or merge objects under a single description. For example, output ["photo of a man", "photo of a cat"] instead of ["photos of a man and a cat"].
@@ -25,12 +25,16 @@ Example:
     def run(self):
         # single-round single-image conversation
         start = time.time()
-        response = requests.post("http://localhost:11434/api/generate", json={
-            "model": self.name,
-            "prompt": self.prompt,
-            "images": [self.image],
-            "keep_alive": 0,
-        }, stream=True)
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": self.name,
+                "prompt": self.prompt,
+                "images": [self.image],
+                "keep_alive": 0,
+            },
+            stream=True,
+        )
         output = ""
         if response.status_code == 200:
             for line in response.iter_lines():
@@ -49,14 +53,18 @@ Example:
         print(f"VLM Prompt = {self.prompt}")
         print(f"VLM Response = {output.strip()}")
         return output.strip()
-    
+
     def use_as_a_llm(self, prompt: str):
         start = time.time()
-        response = requests.post("http://localhost:11434/api/generate", json={
-            "model": self.name,
-            "prompt": prompt,
-            "keep_alive": 0,
-        }, stream=True)
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": self.name,
+                "prompt": prompt,
+                "keep_alive": 0,
+            },
+            stream=True,
+        )
         output = ""
         if response.status_code == 200:
             for line in response.iter_lines():
@@ -89,21 +97,26 @@ Example:
         try:
             # Attempt to parse as JSON
             text_list = json.loads(self.raw_output)
-            
+
             # Ensure it's a list of strings
             if isinstance(text_list, list):
-                text_list = [str(t).strip() for t in text_list if isinstance(t, (str, int, float))]
+                text_list = [
+                    str(t).strip()
+                    for t in text_list
+                    if isinstance(t, (str, int, float))
+                ]
                 return text_list
             else:
                 raise ValueError("Parsed JSON is not a list.")
-        
+
         except json.JSONDecodeError:
             # Fallback: Try to recover if brackets or quotes are missing
             import re
+
             items = re.findall(r'"(.*?)"|\'(.*?)\'', self.raw_output)
             text_list = [a or b for a, b in items]
             return [t.strip() for t in text_list if t.strip()]
-        
+
     def run_and_parse(self):
         self.raw_output = self.run()
         parsed_output = self.parse_vlm_output()
