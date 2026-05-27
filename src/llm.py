@@ -12,7 +12,12 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 
 class LLM:
     def __init__(
-        self, model_name: str, provider: str, is_chat: bool, temperature: float = 0.2, llm_is_vlm: bool = False
+        self,
+        model_name: str,
+        provider: str,
+        is_chat: bool,
+        temperature: float = 0.2,
+        llm_is_vlm: bool = False,
     ):
         self.llm_is_vlm = llm_is_vlm
         self.vlm = None
@@ -130,11 +135,15 @@ class LLM:
         if self.llm_is_vlm or self.provider == "Ollama":
             full_prompt = self.prompt_system.replace("{content}", prompt)
             start = time.time()
-            response = requests.post("http://localhost:11434/api/generate", json={
-                "model": self.model_name,
-                "prompt": full_prompt,
-                "keep_alive": 0,
-            }, stream=True)
+            response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": self.model_name,
+                    "prompt": full_prompt,
+                    "keep_alive": 0,
+                },
+                stream=True,
+            )
             output = ""
             if response.status_code == 200:
                 for line in response.iter_lines():

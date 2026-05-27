@@ -1,24 +1,25 @@
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
-from std_msgs.msg import Bool
-from svlr_msgs.msg import Action, Actions  # Assuming these are custom messages
-from geometry_msgs.msg import Pose
-from rclpy.task import Future
-from sensor_msgs.msg import Image
-
-import rclpy
-from rclpy.node import Node
-from rclpy.task import Future
-from sensor_msgs.msg import Image, PointCloud2
-from sensor_msgs_py import point_cloud2
-from cv_bridge import CvBridge
-from sensor_msgs.msg import CameraInfo
+import os
 import struct
 
+import rclpy
+from rclpy.node import Node
+from rclpy.task import Future
 
-class RosPubSub(Node):
+from std_msgs.msg import Bool
+from sensor_msgs.msg import Image, PointCloud2, CameraInfo
+from sensor_msgs_py import point_cloud2
+
+from geometry_msgs.msg import Pose
+
+from cv_bridge import CvBridge
+
+from svlr_msgs.msg import Action, Actions  # custom messages
+
+from tools.read_json import read_robot_json
+from controller.controller import RobotController
+
+
+class RosRobotController(Node, RobotController):
     def __init__(
         self,
         pub_topic="",
@@ -26,7 +27,23 @@ class RosPubSub(Node):
         camera_topic="/camera/camera/image_raw",
         camera_points_topic="/camera/camera/depth/color/points",
         robot_pose_topic="/current_pose",
+        robot_name="UR10",
     ):
+        rclpy.init()
+        # Initial pose of the robot
+        init_pose = [read_robot_json(robot_name)["init_pose"]]
+        print(f"Initial pose: {init_pose}")
+
+        # Folder to save captured images
+        image_folder_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "captured_image",
+        )
+        os.makedirs(image_folder_path, exist_ok=True)
+
+        camera_topic = self.args.camera_topic
+        if self.args.use_camera_without_ros:
+            camera_topic = ""
         super().__init__("ros_pubsub_node")
 
         self.bridge = CvBridge()
@@ -42,6 +59,10 @@ class RosPubSub(Node):
             self.subscription = self.create_subscription(
                 Bool, sub_topic, self.callback, 10
             )
+
+        print(f"Publisher topic: {pub_topic}")
+        print(f"Subscriber topic: {sub_topic}")
+        print(f"Camera topic: {camera_topic}")
 
     def get_robot_pose(self, timeout_sec=5.0):
         """
@@ -197,7 +218,7 @@ def main(args=None):
     pub_topic = "/actions_topic"
     sub_topic = "/end_of_actions"
 
-    node = RosPubSub(pub_topic, sub_topic)
+    node = RosRobotController(pub_topic, sub_topic)
 
     robot_info = {
         "init_pose": {"pos_end_effector": [0.5, 0.3, 0.2, 1.0, 0.0, 0.0, 0.0]},

@@ -1,5 +1,6 @@
 from tools.robot_tool import RobotCamera
 
+
 class Entity:
     def __init__(self, name: str, robot_camera: RobotCamera = None):
         self.name = name
@@ -14,13 +15,12 @@ class Entity:
         self.tracker = None
         self.mask = None  # binary mask of the entity in the image
 
-
     def __str__(self):
         return f"Entity(name={self.name}, found={self.found})"
-    
+
     def __repr__(self):
         return self.__str__()
-    
+
     @property
     def objects_str(self):
         return ", ".join(str(e) for e in self)
@@ -37,9 +37,13 @@ class Entity:
                     list(self.camera_frame_pos)
                 )
             else:
-                print(f"No camera initialized for entity {self.name}, only pixel position updated.")
+                print(
+                    f"No camera initialized for entity {self.name}, only pixel position updated."
+                )
         else:
-            print(f"Pixel position for entity {self.name} is None, cannot update positions.")
+            print(
+                f"Pixel position for entity {self.name} is None, cannot update positions."
+            )
             self.found = False
             self.reset_tracking()
 

@@ -1,5 +1,6 @@
 import importlib
 
+
 def call_robot_class(robot_name: str):
     """
     Dynamically loads the robot action class (e.g., UR10Actions)

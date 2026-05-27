@@ -78,6 +78,68 @@ This mode will allow you to control the UR10 robot with the SVLR framework.
 python main.py --show_image
 ```
 
+### Running SVLR with the SO-ARM100 robot
+
+This mode will allow you to control the [SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) robot with the SVLR framework.
+
+#### Requirements
+
+- [LeRobot](https://github.com/huggingface/lerobot) (v0.5.1), used to control SO-ARM100.
+- SO-ARM100 Robot + camera
+- Have a calibrated camera : If you have a USB camera you can use the ROS package [logicool](https://github.com/bastien-muraccioli/logicool) and follow the instructions to calibrate the camera. At the end, you will need to save the calibration matrix usb_cam.yaml into the svlr root folder and rename it to calibration.yaml.
+- In slvr/actions/SO100_action.json, you need to specify:
+  - the init_pose in the end effector coordinates
+  - the eye_to_hand: dx and dy that are the offsets between the camera and the end effector.
+  - the eye_to_hand: depth that is the distance between the camera and your setup during the init pose, if you are using a table, it's the distance between the camera and the table.
+  - the rot_mat is the rotation matrix between the camera and the robot frame
+- In slvr/actions/SO100_pick_place.py, you need to specify the zmin where your robot can reach the objects on the table.
+
+#### How to run
+
+Current implementation relies on server & client architecture as the SO-ARM100 run on a distant RaspberryPi instead of being directly connected to where SVLR is running.
+To help with this setup, we provide an implementation of the web server that runs on the RaspberryPi
+
+##### Server
+
+First copy the `lerobot_webserver.py` to the RaspberryPi then run it
+
+The script expect the URDF file for the SO-ARM100. The files can be downloaded at https://github.com/TheRobotStudio/SO-ARM100/ (you need to download the whole project). Extract it point the script to the `so101_new_calib.urdf` file using `--urdf` flag.
+
+``` bash
+rpi$ python lerobot_webserver.py --mode real --urdf /path/to/SO-ARM100/Simulation/SO101/so101_new_calib.urdf
+```
+
+Find below usage:
+```
+usage: lerobot_webserver.py [-h] [--mode {mock,real}] [--host HOST] [--port PORT] [--action-duration SECONDS]
+                     [--port-id SERIAL_PATH] [--urdf URDF_PATH] [--robot-id ROBOT_ID]
+                     [--lerp-speed M_PER_S]
+
+Robot web server
+
+options:
+  -h, --help            show this help message and exit
+  --mode {mock,real}    Backend mode (default: mock)
+  --host HOST           Bind host (default: 0.0.0.0)
+  --port PORT           Bind port (default: 65500)
+  --action-duration SECONDS
+                        [mock] seconds before action auto-completes (default: 2.0)
+  --port-id SERIAL_PATH
+                        [real] serial port, e.g. /dev/serial/by-id/usb-...
+  --urdf URDF_PATH      [real] path to the SO-101 URDF file
+  --robot-id ROBOT_ID   [real] robot ID string (default: so100_follower)
+  --lerp-speed M_PER_S  [real] EE travel speed for lerp in m/s — frame count is derived from distance /
+                        speed (default: 0.1 m/s)
+```
+##### Client
+
+The "client" is SVLR. To connect the client to the server use the --http_server option
+
+``` bash
+python main.py --robot_name SO100 --http_server X.Y.Z.W
+```
+where `X.Y.Z.W` is the IP address of the RaspberryPi
+
 ## Arguments
 Below is a list of arguments you can use when running `main.py` to control the robot:
 
